@@ -1,0 +1,7 @@
+{
+  "work_dir": "/tmp/datamate",
+  "model": {
+    "backend": "http",
+    "path": "/code/models/UNSELECTED"
+  }
+}

@@ -1,214 +1,246 @@
-# DataMate 2026 — Task Breakdown
+# DataMate 2026 — Task Backlog
 
 | Field | Value |
 |---|---|
-| **Document** | `TASKS.md` |
-| **Version** | 1.1 — restructured for one lead and four members |
-| **Status** | Baseline backlog; status column maintained by task owners, reviewed daily by the lead |
-| **Date** | 2026-11-06 (GMT+7) |
-| **Inputs** | `SPEC.md` v1.1 (requirements and acceptance tests), `ARCHITECTURE.md` v1.1 (module layout and seams), `IMPLEMENTATION_PLAN.md` v1.1 (team, schedule, collaboration rules) |
+| **Document** | `TASKS.md` — the single, ordered backlog (source of truth for task status) |
+| **Version** | 2.0 — rebased on the bootstrap codebase (2026-11-07) |
+| **Date** | 2026-11-07 (GMT+7) |
+| **Inputs** | `SPEC.md` (incl. §18 corrections/deferrals), `IMPLEMENTATION_PLAN.md` (phases, process), `COMPETITION_BRIEF.md` |
+| **Status owner** | Each task owner updates their rows in their PR; the lead reviews daily |
 
 ### Conventions
-- **Owner prefixes**: `L` lead, `M1`–`M4` members (roles in `IMPLEMENTATION_PLAN.md` §2). The prefix is the owner. IDs are stable from v1.1; new tasks are appended, never renumbered. v1.0 IDs are mapped in §9.
-- **Ph**: P1 baseline, P2 accuracy, P3 optional (gated), INT integration/release, COL collaboration infrastructure.
-- **Est**: engineer-hours. **Due**: end of day (GMT+7) unless a time is given.
-- **Rev**: required reviewer (another owner); see `IMPLEMENTATION_PLAN.md` §4.2.
-- **Done when**: acceptance criteria; every task also meets the definition of done in `IMPLEMENTATION_PLAN.md` §6.2.
-- **Status**: `Todo` → `Doing` → `Review` → `Done` (or `Dropped`, with reason).
-- A P2/P3 task is merged behind its configuration switch with the production default **off** until its gate passes (SPEC §1.3).
+- **IDs** are stable. v1.1 IDs are kept; new tasks are appended (L-21+, M1-15+, M2-15+, M3-14+, M4-19+). The prefix is the owner: `L` lead, `M1`–`M4` members (roles in `IMPLEMENTATION_PLAN.md` §2).
+- **Rev**: required reviewer. Shared-interface changes (`contracts/`, `config.py` keys, SchemaCard format, prompt ids, reason codes, `fold()`) also need every affected consumer (`CONTRIBUTING.md`).
+- **Env**: `CPU` = any laptop/CI, no GPU or weights; `Colab` = single Colab GPU with model weights; `Docker` = target image on an sm_120 host (E5) with `--network none`.
+- **Status**: `Done` = deliverable exists **and** its acceptance checks pass (command and result recorded in the PR); `Review` = deliverable exists, acceptance not yet observed; `Partial` = a bootstrap version is merged and usable as a stand-in, acceptance not met; `Todo`; `Dropped` (with reason).
+- **P1/P2/P3** per SPEC §1.3. P2/P3 code merges behind a config switch, default off, until its gate passes.
+- Package paths are under `src/datamate/` unless noted.
 
 ---
 
-## 1. Lead — Integration, Contracts & Evaluation (`contracts/`, `eval/`, CI)
+## Phase 1 — Shared foundation and fixture pipeline (target 11-07)
 
-| ID | Task | Ph | Est | Due | Depends on | Rev | Done when | Status |
-|---|---|---|---|---|---|---|---|---|
-| L-01 | Assign members to M1–M4; decide DEC-11 (+ SPEC SC-2) and DEC-13 | P1 | 1 | 11-06 | — | — | Decisions recorded in AP §13 and ARCH §9 | Todo |
-| L-02 | Repository, CI (pytest, ruff, mypy for `contracts`/`temporal`/`formatting`, import-graph check, id-literal scan, schema-diff check), branch protection | COL | 4 | 11-07 | — | M4 | CI runs on every merge request; failing checks block merge (SPEC §4.3, §2.5, §14.2, §15) | Todo |
-| L-03 | Secure the E5 rehearsal/private-run host (DEC-14) | P1 | 3 | **11-07** | — | — | Host with sm_120 GPU(s), Docker, NVIDIA Container Toolkit; `nvidia-smi` works in a container; booked for 11-10, 11-13–11-15 and the private-test window | Todo |
-| L-04 | `contracts/` v1.0.0: all types of SPEC §5, enums, codes, protocols, test doubles, exported schemas | P1 | 6 | **11-07 12:00** | L-02, L-11 | M1–M4 (each reviews the types it produces) | Contract tests pass (round-trip, invariants §5.9); schemas committed; `ReplayModelClient`, `ScriptedModelClient`, `InMemorySink`, `FakeDeadline` available | Todo |
-| L-05 | Walking-skeleton integration: replace stubs as components land | INT | 3 | 11-08 | L-04; M1-11, M2-04, M3-05, M2-06, M4-06 | — | `run.main` produces valid submission and log files on fixtures with `ReplayModelClient` (I1) | Todo |
-| L-06 | Coordinate first full training-split run on G4 | INT | 2 | 11-09 15:00 | L-05, M4-02, M3-02 | — | Run completes; per-type PA and crash list published | Todo |
-| L-07 | Decision reviews: DEC-3/8/10 (11-09), DEC-4 (11-11), P3 go/no-go (11-12), freeze (11-13) | INT | 2 | per plan §7 | L-13, M2-12, M2-13, M3-12, M4-16 | — | Each decision recorded with the evidence used | Todo |
-| L-08 | Safety submission sign-off | INT | 1 | 11-14 | M4-17 | — | Link, md5, and size submitted; submission log updated | Todo |
-| L-09 | Final submission | INT | 2 | 11-16 18:00 | M4-18 | — | Final image verified from a second machine and submitted | Todo |
-| L-10 | Local scorer per Brief §2.1–2.2 (independent oracle; not written by the formatter's author) | P1 | 6 | 11-07 | L-04 | M2 | 100% agreement on every Brief example (G0) | Todo |
-| L-11 | Resolve SPEC V1–V5 (list/table wire shapes, rounding, boolean, tie-code order) against the Brief and training answers | P1 | 3 | **11-07 10:00** | — | M2 | Findings posted before contracts freeze; SPEC updated through SPEC §15 if needed | Todo |
-| L-12 | Harness: entry point, folds, resume, run records, environment-fingerprint check, reports, `compare_runs` | P1 | 8 | 11-09 | L-10, M4-06 | M4 | SPEC §7.14; resumable on Colab; refuses to compare runs with different fingerprints unless `--allow-env-diff`; projections at 500/1,000 questions | Todo |
-| L-13 | Bake-off analysis and DEC-3 recommendation | P1 | 2 | 11-09 | M3-08 | — | Recommendation with evidence to L-07 | Todo |
-| L-14 | Error analysis by type, category, reason code, owning component | INT | 4 | 11-10 | L-06 | — | Top error classes with examples, each assigned to an owner | Todo |
-| L-15 | Determinism check: two full runs on G4 | INT | 3 | 11-11 | L-12 | M4 | G4: identical submissions or \|ΔPA\| ≤ 0.005 | Todo |
-| L-16 | Compare container run (M4-16) with G4 run | INT | 3 | 11-13 | M4-16 | M4 | \|ΔPA\| ≤ 0.01 between environments, or differences explained | Todo |
-| L-17 | Second container run comparison for G7 | INT | 3 | 11-15 | M4-17 | M4 | G7: identical submissions or \|ΔPA\| ≤ 0.005 | Todo |
-| L-18 | Nightly harness operation, golden-baseline diff, morning report | INT | 3 | daily 11-09–11-15 | L-12 | — | Report posted before stand-up: PA, changed answers vs. previous night with commit range, new reason codes | Todo |
-| L-19 | `CODEOWNERS`, merge-request template (SPEC section, tests, run record, contract impact), handoff tracker | COL | 1 | 11-07 | L-02 | — | Every package path has an owner and a required reviewer (plan §4.2) | Todo |
-| L-20 | Determinism CI: run `run.main` twice on fixtures with `ReplayModelClient`; byte-compare outputs | COL | 2 | 11-08 | L-05 | M4 | CI fails on any byte difference between the two runs (SPEC §14.5) | Todo |
+What exists now (commands in `README.md`): one package, contracts 0.1.0, a synthetic fixture business, and a CPU pipeline that reads CSV → DuckDB → scripted parse → time windows → scripted SQL → DuckDB execution → decision → formatting → `submission.jsonl` + logs. 84 tests pass on CPU; `ruff` is clean.
+
+| ID | Title | Owner | Rev | Deps | Package | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| L-21 | Bootstrap codebase and fixture pipeline | L | M1–M4 | — | all P1 packages, `tests/`, `config/` | Package skeleton, contracts 0.1.0, fixture split `tests/fixtures/split_mini`, scripted dev path, tests, README/CONTRIBUTING | `pytest` 84 passed; `ruff check src tests` clean; fixture run exits 0 and scores PA 1.0 against hand-computed answers; production mode refuses scripted backend (exit 2, no output) | CPU | Done |
+| L-02 | CPU CI workflow | L | M4 | L-21 | `.github/workflows/ci.yml` | Workflow: install from `requirements-cpu.lock`, `ruff check`, `pytest` | First green run on GitHub on a PR into `main` (not yet run: no push performed) | CPU | Review |
+| L-04 | Contract review and freeze v1.0.0 | L | M1–M4 (each the types it produces/consumes) | L-21 | `contracts/` | Consumer-reviewed contracts; DC-1…DC-7 (SPEC §18) accepted or reverted; `CONTRACTS_VERSION = "1.0.0"` | Each member approves the PR; all tests pass; SPEC §5 and §18 updated in the same PR | CPU | Todo |
+| L-11 | Verify wire-format assumptions on training references | L | M2 | L-21 | `eval/`, SPEC §17 | Note in SPEC §17 closing V1–V5: list/table shapes, boolean, rounding, tie-code order (already observed: lists are JSON arrays, tables `{columns, rows}`, all 1,884 `number` refs integral) | `score.py` scores `train/answers.jsonl` against itself as PA 1.0; every V-item has evidence or an explicit open question to organizers | CPU | Todo |
+| L-19 | GitHub settings and CODEOWNERS | L | M4 | L-02 | `.github/CODEOWNERS` | Real GitHub handles per package (template in `CONTRIBUTING.md`), branch protection per `CONTRIBUTING.md` | A PR touching `contracts/` requests the right reviewers automatically | CPU | Todo |
+| M4-04 | Result writer | M4 | L | L-21 | `runtime/writer.py` | Log-then-submission with fsync, duplicate rejection, `.prev-<n>` rotation | `tests/unit/test_writer_and_inputs.py` passes | CPU | Done |
+| M4-06 | `run.py` lifecycle and `config.py` | M4 | L | L-21 | `run.py`, `config.py` | Startup checks, `--dev`/`--set`, exit codes 0/1/2, run.json; production refuses dev-only or missing components | `tests/integration/test_fixture_pipeline.py` passes. SPEC's `--stub <stage>` mode is **Dropped**: replaced by the fixture + `ScriptedModelClient` path | CPU | Done |
+| M3-06 | `check_sql`, type contract, `to_typed_value` | M3 | M2 | L-21 | `solver/sql_rules.py`, `solver/typed.py` | Single-SELECT check, LIMIT-needs-ORDER-BY, result-shape and type conversion; NULL/no rows → `E_EMPTY_RESULT`; non-finite → `D_IMPLAUSIBLE` | `tests/unit/test_solver_decision.py` passes | CPU | Done |
+| M2-03 | Period arithmetic | M2 | M1 | L-21 | `temporal/resolve.py` | Week (mon/sun start), month, quarter, year, shifts, leap years | `tests/unit/test_temporal.py` table cases pass | CPU | Done |
+| M1-11 | Catalog fakes for other members | M1 | M3 | L-21 | `tests/fixtures/` | **Replaced** by the real `setup_business` on `tests/fixtures/split_mini` (fixture `catalog` in `tests/conftest.py`) | Any test can build and query a catalog without real data | CPU | Done |
 
 ---
 
-## 2. M1 — Data & Semantics (`ingest/`, `catalog/`, `entities/`, `lexicon/`, `semantics/`)
+## Phase 2 — Real P1 components, developed in parallel (target 11-08 → 11-09)
 
-| ID | Task | Ph | Est | Due | Depends on | Rev | Done when | Status |
-|---|---|---|---|---|---|---|---|---|
-| M1-01 | Inspect training split; data-inspection report; fixture set v0 | P1 | 4 | 11-07 | — | L | Report lists file types, sizes, sheet structures, number/date formats, README quality; fixtures under `tests/fixtures/businesses/` cover every SPEC §7.2 rule | Todo |
-| M1-02 | `fold()`, NFC/whitespace normalization, abbreviation lexicon v0 | P1 | 4 | 11-07 | L-04 | M2 | SPEC §7.6.1, §7.4 normalization; lexicon covers abbreviations seen in training questions | Todo |
-| M1-03 | CSV reader: encoding detection, dialect sniffing | P1 | 3 | 11-07 | L-04 | M3 | SPEC §7.2.2; cp1258 and UTF-8-SIG fixtures pass | Todo |
-| M1-04 | Excel reader (calamine, all sheets, openpyxl fallback) | P1 | 3 | 11-07 | L-04 | M3 | SPEC §7.2.3 reading; native cell types preserved | Todo |
-| M1-05 | SQLite reader (stdlib, `mode=ro&immutable=1`) | P1 | 2 | 11-07 | L-04 | M4 | SPEC §7.2.4; WAL-mode fixture on a read-only directory reads without writes; no DuckDB extension (SC-3) | Todo |
-| M1-06 | Numeric parsing: null tokens, currency, suffixes, compound forms, per-column convention voting, exact SQL types | P1 | 5 | 11-07 | L-04 | M2 | SPEC §7.2.5; `1.250.000`, `1,5`, `150k`, `1tr2`, `12,5%` fixtures; ambiguous column stays VARCHAR with warning | Todo |
-| M1-07 | Date parsing: formats, DMY/MDY evidence, Excel serials, month columns | P1 | 4 | 11-08 | M1-06 | M2 | SPEC §7.2.6; ambiguous `01/02/2025` fixture behaves as specified | Todo |
-| M1-08 | Excel block, header, total-row, note-row detection | P1 | 5 | 11-08 | M1-04 | M3 | SPEC §7.2.3 rules; title-row, merged-header, two-block, totals, notes fixtures pass | Todo |
-| M1-09 | Identifiers (SC-2) and DuckDB materialization | P1 | 3 | 11-08 | M1-02–M1-06 | M3 | SPEC §7.2.7, §7.2.10; extension auto-install/load disabled; file reopenable read-only | Todo |
-| M1-10 | Profiling, keys, joins, date coverage, SchemaCard rendering and budgeting | P1 | 5 | 11-08 | M1-09, M3-03 | M3 | SPEC §7.2.8–7.2.9; byte-identical SchemaCards across setups; 300k-row XLSX ≤ 60 s | Todo |
-| M1-11 | **Catalog fakes for other members**: `make_fake_catalog()` builder and 3 prebuilt fixture catalogs (DuckDB + `BusinessCatalog`) | COL | 2 | **11-07** | L-04 | M3 | Published in `tests/fixtures/catalogs/`; M2/M3/M4 can build and query a catalog without the real ingestion code (SPEC §14.4) | Todo |
-| M1-12 | Entity linker: index, fuzzy query, ranking | P2 | 8 | 11-11 | M1-10, M1-02 | M3 | SPEC §7.6; total ordering; values exactly as stored; held-out PA with switch on/off | Todo |
-| M1-13 | Semantic compiler and view validation (DEC-4) | P2 | 6 | 11-11 | M1-10, M3-02 | M2 | SPEC §7.3; failing views disabled and logged; held-out PA with/without per category | Todo |
-| M1-14 | Ingestion fixes from full runs; fixture gaps | INT | 10 | ongoing to 11-13 | L-06 | M3 | Every ingestion warning class seen in training has a fixture; zero setup failures on training split | Todo |
+Every row names the **stand-in now**: the code other members keep using until the task lands. Replacing a stand-in must not change any contract type; if it must, raise a contract change (L-04 process) first.
 
----
+### M1 — Data & catalog (`ingest/`, `catalog/`, `lexicon/`)
 
-## 3. M2 — Rules, Time & Answers (`rules/`, `temporal/`, `decision/`, `formatting/`)
+| ID | Title | Owner | Rev | Deps | Package | Stand-in now | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| M1-01 | Training-data inspection report and fixture set v1 | M1 | L | — | `tests/fixtures/businesses/` | `split_mini` (clean CSV only) | Report: file types (train: 107 xlsx, 20 csv, 1 sqlite), sheets, header layouts, number/date formats ("560,000", "1 thg 6 2025"), README quality; small anonymized fixtures, one per pattern | Every pattern in the report has a fixture with a hand-written expected table | CPU | Todo |
+| M1-02 | Lexicon: abbreviations and text normalization | M1 | M2 | L-21 | `lexicon/` | `fold()`, `nfc()`, `to_identifier()` exist | `abbrev_vi.tsv` from training questions ("dthu", "sp", "dc", "ko", "nhiu"); `normalize_question()` | Covers every abbreviation seen ≥ 3 times in training questions; `fold` behavior unchanged (consumer tests) | CPU | Partial |
+| M1-03 | CSV reader: encoding and dialect | M1 | M3 | M1-01 | `ingest/` | `read_csv` (UTF-8/BOM, sniffed delimiter) | SPEC §7.2.2 encoding cascade, warnings | cp1258, UTF-16, UTF-8-SIG fixtures read identically to their UTF-8 versions | CPU | Partial |
+| M1-06 | Numeric parsing | M1 | M2 | M1-01 | `ingest/` | `infer_column_type` (plain ints/decimals only) | SPEC §7.2.5: null tokens, currency, `k/tr/ty` suffixes, `1tr2`, VN/EN/PLAIN voting, raw column kept, BIGINT/DECIMAL | Fixtures `1.250.000`, `560,000`, `1,5`, `150k`, `1tr2`, `12,5%` parse exactly; ambiguous column stays VARCHAR with warning | CPU | Todo |
+| M1-07 | Date parsing | M1 | M2 | M1-06 | `ingest/` | ISO dates only | SPEC §7.2.6 formats incl. "1 thg 6 2025", DMY/MDY evidence, Excel serials, month columns, sheet-year for dates without year (rulebook §8) | Every date format in M1-01's report parses; ambiguous `01/02/2025` follows the spec | CPU | Todo |
+| M1-04 | Excel reader | M1 | M3 | M1-01 | `ingest/` | xlsx skipped with `W_UNSUPPORTED_FILE` → business `failed` | All sheets via `python-calamine` (openpyxl fallback); native cell types kept | All training xlsx files open; cell types preserved on fixtures | CPU | Todo |
+| M1-08 | Excel structure: blocks, headers, totals, notes | M1 | M3 | M1-04 | `ingest/` | — | SPEC §7.2.3 detection rules | Title-row, merged-header, two-block, total-row, note-row fixtures pass | CPU | Todo |
+| M1-05 | SQLite reader | M1 | M4 | M1-01 | `ingest/` | sqlite skipped | stdlib `mode=ro&immutable=1`; no DuckDB extension (SC-3) | WAL-mode fixture on a read-only directory reads with zero writes | CPU | Todo |
+| M1-09 | Fast materialization | M1 | M3 | M1-03 | `catalog/build.py` | row-by-row `executemany` (too slow: training split not finished in 10 min) | Arrow/columnar bulk load, SC-2 identifiers, extension autoload off | 300k-row file ≤ 60 s; full training split setup measured and logged | CPU | Partial |
+| M1-10 | Profiling, keys, joins, data range, SchemaCard | M1 | M3 | M1-09, M3-03 | `catalog/` | basic profile + plain card; `data_range` = union of all DATE columns | SPEC §7.2.8–7.2.9; `data_range` only from fact tables; card budgeted by tokenizer | Byte-identical cards across two setups; `data_range` on training businesses matches README "Dữ liệu có đến hết …" | CPU | Partial |
 
-| ID | Task | Ph | Est | Due | Depends on | Rev | Done when | Status |
-|---|---|---|---|---|---|---|---|---|
-| M2-01 | Inspect `rulebook.md` and `calendar.csv`; calendar alias table; resolve SPEC V6 | P1 | 2 | 11-07 | — | L | Rule parameters present in the training rulebook documented (for tests only, never as code defaults); alias table committed | Todo |
-| M2-02 | `LunarCalendar` over `calendar.csv` with validation | P1 | 3 | 11-07 | M2-01, L-04 | M1 | SPEC §7.1 step 2; gap/duplicate/leap-month fixtures; passes the `LunarCalendar` conformance suite | Todo |
-| M2-03 | Period arithmetic: weeks by `week_start`, months, quarters, years, shifts, clamping | P1 | 5 | 11-07 | L-04 | M1 | Unit tests for year boundaries, leap years, both week starts | Todo |
-| M2-04 | `resolve_windows()` for all P1 `TimeExpr` kinds; coverage ratio; provenance | P1 | 8 | **11-08 12:00** | M2-03 | M3 | SPEC §7.5 P1 rows; property test over 10,000 random cases; `unsupported` → `E_TIME_UNSUPPORTED` | Todo |
-| M2-05 | `TemporalParams` extraction (`rules.temporal.v1`), span validation, generic fallback | P1 | 4 | 11-09 | M3-02, M3-03, M2-04 | M3 | SPEC §7.1 step 3; paraphrased spans rejected; empty rulebook → all generic; result in `run.json.split` | Todo |
-| M2-06 | Formatter: all types; Decimal-preserving serializer | P1 | 6 | 11-08 | L-04, L-11 | L | SPEC §7.10 goldens pass; the same goldens are used by L-10's scorer | Todo |
-| M2-07 | Rule gate, catalog check for missing fields, base features | P1 | 5 | 11-08 | L-04, M1-11 | L | SPEC §7.9 rules 1–7 each tested against fake catalogs and scripted attempts | Todo |
-| M2-08 | `RuleProfile` extraction (`rules.profile.v1`) with validation | P2 | 5 | 11-11 | M2-05 | M3 | SPEC §7.1 step 4; unresolved fields listed | Todo |
-| M2-09 | Lunar windows: `lunar_holiday`, `lunar_date_range` | P2 | 4 | 11-11 | M2-02, M2-08 | M1 | SPEC §7.5 P2 rows; Tết across two solar years tested | Todo |
-| M2-10 | Rulebook-perturbation suite | P2 | 3 | 11-11 | M2-05 | L | Changing week start / inclusivity / holiday window changes resolved windows as expected | Todo |
-| M2-11 | Table column-naming conventions from training references | P2 | 2 | 11-10 | L-11 | L | `formatting/table_conventions.md`; table-type PA reported | Todo |
-| M2-12 | Gate value check and P2 verifier features | P2 | 4 | 11-11 | M2-07, L-12 | L | G5: rule-gate PA ≥ answer-everything PA on held-out businesses | Todo |
-| M2-13 | Calibrator experiment | P3 | 6 | 11-12 | M2-12 | L | Grouped-CV PA vs. rule gate; adopted only by L-07 | Todo |
-| M2-14 | Fixes from full runs (temporal, rule, decision, format errors) | INT | 8 | ongoing to 11-13 | L-06 | L | Each assigned error class reduced or explained | Todo |
+### M2 — Rules, time, decision, formatting (`rules/`, `temporal/`, `decision/`, `formatting/`)
 
----
+| ID | Title | Owner | Rev | Deps | Package | Stand-in now | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| M2-01 | Rulebook and calendar inspection | M2 | L | — | docs, `tests/fixtures/rulebooks/` | — | Diff of train vs public_test rulebooks (public adds rules; never hard-code either); calendar columns `date,weekday,lunar_day,lunar_month,lunar_year,lunar_leap,holiday` | Report lists every rule the P1 pipeline relies on and where it comes from at runtime | CPU | Todo |
+| M2-04 | Resolver completion | M2 | M3 | M2-03 | `temporal/` | P1 subset (see SPEC §18.2) | Year-omitted date ranges, rolling weeks/months, `same_period_prior_year`, "same days of previous month" comparison, property test | 10,000 random `(as_of, expr)` cases: `start ≤ end`, lengths match the rule | CPU | Partial |
+| M2-05 | TemporalParams from the rulebook | M2 | M3 | M2-04, M3-02 | `rules/` | generic defaults, `source="generic"` | One `rule_profile` call (`rules.temporal.v1`), span validation, generic fallback per field | Paraphrased spans rejected; empty rulebook → all generic; train and public_test rulebooks give the expected params; result in run.json | CPU (scripted) → Colab | Todo |
+| M2-02 | Lunar calendar | M2 | M1 | M2-01 | `temporal/` | not read | `LunarCalendar` over `calendar.csv` with validation | Gap/duplicate/leap fixtures; round-trip over the file's range | CPU | Todo |
+| M2-06 | Formatter completion and shared goldens | M2 | L | L-11 | `formatting/` | all types, DC-1/DC-2 implemented | `tests/golden/` cases from Brief and rulebook §9 used by both formatter and scorer | Goldens pass for formatter **and** `eval/score.py` | CPU | Partial |
+| M2-07 | Decision gate completion | M2 | L | M1-10 | `decision/` | rules 1–8, token-containment field check | Fuzzy catalog check (SPEC §7.9), README-aware, features recorded | Each rule tested on fixture catalogs; no false "unanswerable" on the 70 training unanswerables' answerable neighbours (measured in L-14) | CPU | Partial |
 
-## 4. M3 — Reasoning Engine (`llm/client.py`, `prompts/`, `parse/`, `solver/`, `sandbox/`)
+### M3 — Model client, prompts, parser, solver, sandbox (`llm/client.py`, `prompts/`, `parse/`, `solver/`, `sandbox/`)
 
-| ID | Task | Ph | Est | Due | Depends on | Rev | Done when | Status |
-|---|---|---|---|---|---|---|---|---|
-| M3-01 | Colab G4: install candidate vLLM versions; serve each candidate with the 32 GB-equivalent cap | P1 | 4 | 11-07 | M4-01 | M4 | Per candidate: greedy output on sm_120, memory within cap, CUDA graphs on; results table posted (G1) | Todo |
-| M3-02 | `HttpModelClient`: explicit params, JSON-schema responses, `enable_thinking`, request hashing, timeout/retry, exact capture | P1 | 5 | **11-07** | L-04, M4-03 | M4 | SPEC §7.13.2; asserts every request body field (D1); byte-exact capture; passes the `ModelClient` conformance suite | Todo |
-| M3-03 | Prompt rendering (Jinja2 StrictUndefined), template hashing, tokenizer budgeting | P1 | 3 | 11-07 | L-04 | M1 | SPEC §7.13.4–7.13.5; rendering twice is byte-identical | Todo |
-| M3-04 | Question parser + `parse.frame.v1` | P1 | 5 | 11-08 | M3-02, M3-03, M1-02 | M2 | SPEC §7.4; schema-valid frames on ≥ 98% of training questions; invalid → `E_PARSE_INVALID` | Todo |
-| M3-05 | Solver: context pack, `solve.sql.v1`, `repair.sql.v1`, attempt loop | P1 | 8 | 11-08 | M3-04, M1-11, M2-04 | M2 | SPEC §7.7.1, §7.7.4; sections 1–5 byte-identical per business (D3); repairs bounded; soft deadline respected | Todo |
-| M3-06 | `check_sql`, contract check, `to_typed_value` | P1 | 4 | 11-08 | L-04 | M2 | SPEC §7.7.3, §7.7.5; each violation code tested | Todo |
-| M3-07 | Sandbox: killable worker pool, read-only DuckDB, limits, tagged value encoding | P1 | 5 | 11-08 | L-04, M1-11 | M4 | SPEC §7.8 tests; passes the `Executor` conformance suite | Todo |
-| M3-08 | Model bake-off runs (analysis by L-13) | INT | 6 | 11-09 | L-06 | L | AP §8.2 protocol for 2–3 candidates; PA, determinism, throughput table | Todo |
-| M3-09 | Prompt and few-shot improvements from error analysis | P2 | 6 | 11-11 | L-14 | L | Each change has a run record; held-out PA not lower | Todo |
-| M3-10 | Few-shot bank builder (`training_code/data_generation/build_fewshot.py`) + selection with CV leakage guard | P2 | 4 | 11-10 | M3-05 | L | SPEC §7.7.2; leakage test passes; bank listed in `data_manifest.json` | Todo |
-| M3-11 | Python fallback (`solve.python.v1`), import guard | P2 | 4 | 11-11 | M3-07 | M4 | SPEC §7.7.4 P2, §7.8 Python rules; switch default off | Todo |
-| M3-12 | Multi-strategy agreement experiment | P3 | 6 | 11-12 | M3-09, M2-12 | L | PA, runtime, and determinism vs. single strategy; adopted only by L-07 | Todo |
-| M3-13 | **Recorded `ModelCall` fixtures** for CPU integration tests (refreshed when a template version changes) | COL | 4 | **11-08 12:00** | M3-04, M3-05 | L | Fixtures under `tests/fixtures/model_calls/` with template versions in their metadata; integration and determinism CI run on CPU | Todo |
+| ID | Title | Owner | Rev | Deps | Package | Stand-in now | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| M3-01 | Serve candidate models on Colab | M3 | M4 | M4-01 | notebooks/notes | — | Greedy serving of 2–3 candidates (≤ 15 B total params, released before 2026-10-26, license checked) with the 32 GB-equivalent cap | Results table: memory, tokens/s, JSON-schema output works, determinism of 2 identical requests | Colab | Todo |
+| M3-02 | `HttpModelClient` | M3 | M4 | L-04, M3-01 | `llm/http.py` | `ScriptedModelClient`; `make_client` raises `NotImplementedError` for `http` | OpenAI-compatible client to vLLM: explicit params, `response_format` JSON schema, `enable_thinking`, request hash, timeout/retry, exact `content`/`reasoning` capture | Unit test on a local fake HTTP server (CPU) asserts every request field; one real call on Colab; errors returned as `ModelCall.error` | CPU + Colab | Todo |
+| M3-13 | `ReplayModelClient` and recorded calls | M3 | L | M3-02 | `llm/replay.py`, `tests/fixtures/model_calls/` | `ScriptedModelClient` | Record real `ModelCall`s on Colab for the fixture + ~30 training questions; replay by `request_sha256` | CPU CI runs the pipeline on recorded calls; template change without re-record fails with `E_REPLAY_MISS` | Colab → CPU | Todo |
+| M3-03 | Prompt rendering and token budgeting | M3 | M1 | M3-01 | `prompts/` | Python format templates `*.v1`, hashes in run.json | Tokenizer-based budget (SPEC §7.7.1), sections 1–5 byte-identical per business | Render twice → identical bytes; over-budget → documented reduction order | CPU | Partial |
+| M3-04 | Parser prompt and validation | M3 | M2 | M3-02, M1-02 | `parse/` | validation + `parse.frame.v1` baseline wording | Prompt producing valid `QuestionFrame`s (DC-1, DC-2 fields) | ≥ 98 % schema-valid frames on the training questions; `expected_type` accuracy reported vs `answers.jsonl` | Colab | Partial |
+| M3-05 | Solver context and repair loop | M3 | M2 | M3-03, M3-04 | `solver/` | attempt loop with 1 repair | Context pack (rulebook, README, card, windows, type contract), soft deadline | Bounded repairs; per-attempt logs; solve success rate on training reported | Colab | Partial |
+| M3-07 | Sandbox worker pool | M3 | M4 | L-21 | `sandbox/` | in-process read-only DuckDB, timer interrupt (not isolation) | Killable spawn pool, RLIMIT_AS, per-worker connection cache, same encoding | SPEC §7.8 tests: runaway CTE killed, memory bomb contained, 16 concurrent readers | CPU | Partial |
 
----
+### M4 — Configuration, orchestration, serving, packaging (`run.py`, `config.py`, `runtime/`, `llm/replicas.py`)
 
-## 5. M4 — Platform & Compliance (`run.py`, `config.py`, `runtime/`, `llm/replicas.py`, `llm/inprocess.py`, Docker, `tools/`, compliance docs)
+| ID | Title | Owner | Rev | Deps | Package | Stand-in now | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| M4-01 | Base image and lock | M4 | L | — | `requirements.lock` | `requirements-cpu.lock` (CPU only) | Lock from `pip freeze` inside the chosen base image (reference `vllm/vllm-openai:v0.10.1.1`); duckdb/pydantic versions compatible with `pyproject.toml` | CPU tests pass when installed from the lock | Docker (build host) | Todo |
+| M4-02 | Colab environment | M4 | L | M4-01 | `notebooks/colab_bootstrap.ipynb` | — | Notebook: mount data/model snapshot with SHA256SUMS, install from lock, run fixture then training subset | Fresh session reaches a scored run in ≤ 20 min | Colab | Todo |
+| M4-03 | Replica manager | M4 | M3 | M4-01, M3-01 | `llm/replicas.py` | none (manual `vllm serve` on Colab) | Launch/health/warm-up/restart of 1–2 vLLM servers on loopback; logs to `/result/logs/replica-<i>.log` | Works with `replicas=1` on Colab; restart tested | Colab | Todo |
+| M4-05 | Concurrent orchestrator | M4 | M3 | M4-03, M3-02 | `runtime/` | sequential loop in `run.py` | Thread-pool workers per replica, fixed assignment, per-question soft/hard deadlines, global stop, SIGTERM → abstain for unwritten ids | Same submission bytes with 1 and N workers on recorded calls; global stop writes every id | CPU (replay) | Todo |
+| M4-07 | Records completion | M4 | L | L-04 | `runtime/`, `run.py` | `LogRecord`, businesses.jsonl, run.json (partial fields) | SPEC §8.3–8.5 fields incl. environment fingerprint, replica timings | Schema-validate every log line; `thinking` rule (SC-7) tested with a reasoning-producing client | CPU | Partial |
 
-| ID | Task | Ph | Est | Due | Depends on | Rev | Done when | Status |
-|---|---|---|---|---|---|---|---|---|
-| M4-01 | Pull candidate base images on E4; extract `pip freeze` locks | P1 | 4 | 11-06 | — | L | Lock per candidate base image; vLLM/torch/CUDA versions recorded | Todo |
-| M4-02 | Colab environment from lock; Drive layout with checksummed data/model snapshots; session bootstrap notebook | COL | 3 | **11-07** | M4-01 | L | Fresh G4 session reaches a running harness in ≤ 20 min; every member uses the same snapshot SHA-256s (plan §5.3) | Todo |
-| M4-03 | Replica manager: launch, health, warm-up, restart, log capture | P1 | 6 | 11-07 | M4-01 | M3 | SPEC §7.13.1; works with `replicas=1` on G4; restart tested | Todo |
-| M4-04 | Writer: log-then-submission fsync ordering, duplicate rejection, existing-file rename | P1 | 3 | 11-07 | L-04 | L | SPEC §7.11; passes the `SubmissionSink` conformance suite; crash-in-the-middle test | Todo |
-| M4-05 | Orchestrator: plan/assignment, queues, workers, deadlines, degrade mode, global stop, SIGTERM | P1 | 8 | 11-08 | L-04, M4-04 | M3 | SPEC §7.12; assignment identical across runs; global stop writes abstains for all unwritten ids | Todo |
-| M4-06 | `run.py` lifecycle and `config.py` (validation, defaults, hashing, `--dev` overrides) with **stub pipeline** usable from day 2 | P1 | 5 | 11-08 | L-04 | L | SPEC §2.1–2.3, §6.1; stub mode lets L-05 integrate components one at a time; exit codes per §2.1 | Todo |
-| M4-07 | Record assembly: `LogRecord`, `BusinessLogRecord`, `RunRecord` | P1 | 4 | 11-08 | L-04 | L | SPEC §8.3–8.5 schemas validate; `thinking`/`code`/`output` rules (SC-7) tested | Todo |
-| M4-08 | Runtime projection on G4 | P1 | 2 | 11-09 | L-06 | L | AP §7.8 projection reported for 500 and 1,000 questions (G3) | Todo |
-| M4-09 | Dockerfile, `predict.sh`, `.dockerignore`, first image build | P1 | 5 | 11-10 | L-07 (DEC-3), M4-06 | L | ARCH §7.1; `linux/amd64`; DG §4 layout; `training_code/` not excluded | Todo |
-| M4-10 | 10-question smoke run on E5 with the exact scoring command | INT | 3 | 11-10 | M4-09, L-03 | L | `--network none`, `/data:ro`, both GPUs; loopback serving works (SPEC V10) | Todo |
-| M4-11 | Fault-injection tests (replica kill, setup crash, SQL timeout storm, SIGTERM) | P2 | 4 | 11-11 | M4-05 | M3 | Each fault yields the outcome in ARCH §5.3; run completes with valid outputs | Todo |
-| M4-12 | Runbooks: build/export/upload, E5 run, private-test run | INT | 2 | 11-12 | M4-09 | L | The lead can execute each runbook without M4 | Todo |
-| M4-13 | README (approach, model declarations with `tools/count_params.py`), `training_code/`, `data_manifest.json` | INT | 4 | 11-12 | L-07 (DEC-3), M3-10 | L | SPEC §13.1–13.2; parameter count from shipped safetensors; no-training statement unless DEC-9 adopts LoRA | Todo |
-| M4-14 | `tools/precheck.sh` (DG §10 checklist automation) | INT | 3 | 11-12 | M4-07 | L | SPEC §13.3; fails on any missing log field or line | Todo |
-| M4-15 | Release candidate RC1 image | INT | 2 | 11-12 | M4-13, M4-14 | L | Built from a tagged commit; size measured | Todo |
-| M4-16 | Full rehearsal on E5: training split, exact scoring command | INT | 3 | 11-13 | M4-15, L-03 | L | G6 passes; precheck clean | Todo |
-| M4-17 | Safety submission: export, md5, upload, second-machine verify | INT | 2 | 11-14 | M4-16 | L | IMPLEMENTATION_PLAN §8.1 steps 1–9 complete | Todo |
-| M4-18 | Final candidate packaging checks (G8) and final export | INT | 3 | 11-16 12:00 | L-17 | L | Uncompressed tar ≤ 100 GB; md5 verified; README final | Todo |
+### Lead — evaluation (`eval/`)
+
+| ID | Title | Owner | Rev | Deps | Package | Stand-in now | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| L-10 | Scorer completion | L | M2 | L-11 | `eval/score.py` | Brief §2.1 scorer, PA, per-type report | Shared goldens (with M2-06); per-reason-code report | 100 % agreement on goldens; `answers.jsonl` vs itself = 1.0 | CPU | Partial |
+| L-12 | Harness | L | M4 | L-10, M4-02 | `eval/harness.py` | `python -m datamate.run` + `python -m datamate.eval.score` | Business folds, run record (config hash, git commit, env fingerprint, model revision), `compare_runs` | Resumable on Colab; refuses mismatched fingerprints without `--allow-env-diff` | CPU + Colab | Todo |
+| L-20 | Determinism CI on replayed calls | L | M4 | M3-13 | `tests/determinism/` | `test_fixture_pipeline_is_deterministic` (scripted) | Two fresh processes on recorded calls, byte-compare outputs (timing fields removed) | Fails on any byte difference | CPU | Partial |
+| L-03 | Secure the E5 host (sm_120 + Docker) | L | — | — | — | — | Booked host for 11-10, 11-13…11-15 and the private-test window | `nvidia-smi` works inside a container on that host | Docker | Todo |
 
 ---
 
-## 6. Cross-member handoffs
+## Phase 3 — First real end-to-end run on Colab (target 11-09)
 
-Each row is a promise from a producer to its consumers. A late handoff is raised at stand-up the same day; consumers keep working against the fake or test double named in the last column.
-
-| # | Artifact | Producer | Consumers | Needed by | Until then, consumers use |
-|---|---|---|---|---|---|
-| H1 | `contracts/` v1.0.0 + test doubles | L (L-04) | all | 11-07 12:00 | Draft branch of `contracts/` |
-| H2 | Format decisions V1–V5 | L (L-11) | M2, L | 11-07 10:00 | SPEC §17 defaults |
-| H3 | Fake catalogs | M1 (M1-11) | M2, M3, M4 | 11-07 EOD | Hand-written `BusinessCatalog` in tests |
-| H4 | `HttpModelClient` on Colab | M3 (M3-02) | M2 (M2-05), M1 (M1-13) | 11-07 EOD | `ScriptedModelClient` |
-| H5 | Replica manager on Colab | M4 (M4-03) | M3 | 11-07 EOD | Manually started vLLM server |
-| H6 | `resolve_windows()` P1 | M2 (M2-04) | M3 | 11-08 12:00 | Literal windows in solver tests |
-| H7 | Recorded `ModelCall` fixtures | M3 (M3-13) | L, M2, M4 | 11-08 12:00 | `ScriptedModelClient` |
-| H8 | Real `setup_business` on fixtures | M1 (M1-10) | M3, L | 11-08 EOD | Fake catalogs (H3) |
-| H9 | Formatter + rule gate | M2 (M2-06, M2-07) | M4, L | 11-08 EOD | Stub decision in `run.py` stub mode |
-| H10 | `run.main` stub mode + writer | M4 (M4-04, M4-06) | L | 11-08 EOD | Direct pipeline calls in tests |
-| H11 | Scorer | L (L-10) | M2, M3 | 11-07 EOD | Brief goldens only |
-| H12 | Harness on Colab | L (L-12) | all | 11-09 | Ad-hoc scripts (no accuracy claims allowed) |
+| ID | Title | Owner | Rev | Deps | Package | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| L-05 | Integrate real components | L | M4 | M1-04, M1-06, M1-09, M3-02, M3-04, M3-05, M4-03 | `run.py`, `runtime/` | `config/colab.json`; pipeline runs with `HttpModelClient` on real ingestion | 50 training questions run end-to-end with valid outputs and logs; no scripted component in the path (`run.json.model_backend == "http"`) | Colab | Todo |
+| L-06 | First full training-split run | L | M3, M4 | L-05, L-12 | `eval/` | Run record + per-type PA + crash list | All 3,000 questions written; PA reported by type and reason code (harness only — no accuracy claim otherwise) | Colab | Todo |
+| M4-08 | Runtime projection | M4 | L | L-06 | `eval/` | Load time + mean per-question time; projection for 500 and 1,000 questions on 2 × 5090 | Projection ≤ 50 % of the 6 h budget or a mitigation plan | Colab | Todo |
+| M3-08 | Model bake-off | M3 | L | L-06 | — | 2–3 candidates on the same run protocol | PA, determinism (2 runs), throughput per candidate | Colab | Todo |
+| L-13 | DEC-3: model and base image | L | M3, M4 | M3-08, M4-08 | `IMPLEMENTATION_PLAN.md` §7 | Decision record with evidence; parameter count from shipped safetensors | Model ≤ 15 B total params, public before 2026-10-26, license permits use | Colab | Todo |
 
 ---
 
-## 7. Dependency map (P1 critical path)
+## Phase 4 — Evaluation and correctness fixes (target 11-10 → 11-11)
+
+| ID | Title | Owner | Rev | Deps | Package | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| L-14 | Error analysis | L | — | L-06 | `eval/` | Top error classes by type, reason code, owning component, with examples | Every class above 1 % of questions has an owner and a task | CPU | Todo |
+| L-18 | Nightly run and diff | L | — | L-12 | `eval/` | Nightly harness on the day's `main`; changed answers vs previous night with commit range | Report before stand-up each day 11-10 → 11-15 | Colab | Todo |
+| M1-14 | Ingestion fixes from full runs | M1 | M3 | L-14 | `ingest/`, `catalog/` | Fixes + a fixture per fixed pattern | Zero setup failures on training; each fix has a regression fixture | CPU | Todo |
+| M2-14 | Temporal / decision / format fixes | M2 | L | L-14 | M2 packages | Fixes with regression tests | Each assigned class reduced or explained in the PR | CPU | Todo |
+| M3-09 | Prompt and SQL-rule improvements | M3 | L | L-14 | `prompts/`, `solver/` | New template versions (`.v2`…), refreshed recorded calls | Held-out PA (by business fold) not lower; run record attached | Colab | Todo |
+| M4-19 | Logging review against DG §3.3 | M4 | L | L-06 | `runtime/` | Check `thinking`/`code`/`output` on a real run (e.g. thinking on vs off) | Every log line has the required fields; `thinking` is exact model reasoning or `null` | Colab | Todo |
+| L-15 | Determinism check: two full runs | L | M4 | L-12 | `eval/` | `compare_runs` on two identical Colab runs | Identical submissions or \|ΔPA\| ≤ 0.005 | Colab | Todo |
+
+---
+
+## Phase 5 — P2 features, each added only when results justify it (target 11-10 → 11-12)
+
+Each feature merges behind its switch (default **off**) and is turned on only by L-07 with a run record showing held-out PA gain without runtime or determinism regressions.
+
+| ID | Title | Owner | Rev | Deps | Package | Deliverable | Acceptance (gate) | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| M2-08 | RuleProfile: definitions, ranking default, rounding rules | M2 | M3 | M2-05 | `rules/` | `rules.profile.v1`; rounding/`money_decimals` and list-order rules read from the mounted rulebook (replaces config defaults of DC-1) | Same profile values on train and public_test where their rulebooks agree; differences picked up where they differ | Colab | Todo |
+| M2-09 | Lunar windows (Tết, rằm, mùng) | M2 | M1 | M2-02, M2-08 | `temporal/` | `lunar_holiday`, `lunar_date_range` from rulebook-defined windows | Tết across two solar years; held-out PA gain on lunar questions | CPU | Todo |
+| M2-15 | Sub-day windows (ca sáng/chiều, giờ cao điểm) | M2 | M3 | M2-08 | `temporal/`, `contracts/` | Time-of-day ranges from the rulebook passed to the solver | Fixture with timestamps; gain on shift questions | CPU | Todo |
+| M2-10 | Rulebook-perturbation suite | M2 | L | M2-05 | `tests/` | Altered rulebooks (week start, inclusivity, Tết window) | Windows change exactly as the altered rule says | CPU | Todo |
+| M2-11 | Table column conventions | M2 | L | L-11 | `formatting/` | `formatting/table_conventions.md`; per-column numeric kind | Table-type PA reported before/after | CPU | Todo |
+| M2-12 | Gate value check, verifier features | M2 | L | M2-07, L-12 | `decision/` | Features recorded; abstain thresholds evaluated | G5: gate PA ≥ answer-everything PA on held-out businesses | Colab | Todo |
+| M1-12 | Entity linker | M1 | M3 | M1-10, M1-02 | `entities/` (new) | Fuzzy lexical candidates with codes; values exactly as stored | Held-out PA with switch on vs off | CPU | Todo |
+| M1-13 | Semantic compiler / validated views (DEC-4) | M1 | M2 | M1-10, M3-02 | `semantics/` (new) | Rulebook-derived views (valid orders, revenue lines, base-unit quantities) with validation | Failing views disabled and logged; held-out PA per category | Colab | Todo |
+| M1-15 | Unit conversion tables | M1 | M2 | M1-10 | `catalog/` | Parse README / conversion sheets into a `unit_conversion` table (base vs large units) | "Tồn theo đơn vị lớn" and "bán được bao nhiêu <đơn vị>" fixtures answer correctly | CPU | Todo |
+| M3-10 | Few-shot bank with leakage guard | M3 | L | M3-05 | `solver/`, `training_code/` | Bank built from the training split only | Leakage test (fold exclusion) passes; bank in `data_manifest.json` | CPU | Todo |
+| M3-11 | Python fallback | M3 | M4 | M3-07 | `sandbox/` | `solve.python.v1`, import allow-list, killable worker | Default off; gain on procedural questions | CPU + Colab | Todo |
+| M2-13 | Calibrator (P3) | M2 | L | M2-12 | `decision/` | Grouped-CV calibrator | Adopted only by L-07 | Colab | Todo |
+| M3-12 | Multi-strategy agreement (P3) | M3 | L | M3-09, M2-12 | `solver/` | Agreement-based answer/abstain | Adopted only by L-07; runtime within budget | Colab | Todo |
+| L-07 | Decision reviews (DEC-3/4/8/10, P2 switches, P3 go/no-go, freeze 11-13) | L | — | per decision | `IMPLEMENTATION_PLAN.md` §7 | Decision records with evidence | Each switch change cites a run record | — | Todo |
+
+---
+
+## Phase 6 — Docker and target-hardware validation (target 11-10 → 11-13)
+
+| ID | Title | Owner | Rev | Deps | Package | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| M4-09 | Dockerfile and `predict.sh` | M4 | L | L-13, M4-01, M4-05 | `Dockerfile`, `predict.sh`, `.dockerignore` | Image per DG §4 layout; `predict.sh` no args, fixed env (SPEC §2.4), `python -m datamate.run --config /code/config/run_config.json --data-dir /data --result-dir /result` | `docker build --platform linux/amd64` succeeds; inside the image, `predict.sh` on the fixture split writes valid outputs when the model is present, and exits 2 with no submission when it is absent | Docker | Todo |
+| M4-10 | E5 smoke run | M4 | L | M4-09, L-03 | — | 10 training questions with the exact organizer command (`--network none`, `/data:ro`, 2 GPUs) | Valid submission and logs; loopback serving works offline (SPEC V10) | Docker | Todo |
+| M4-11 | Fault injection | M4 | M3 | M4-05 | `tests/` | Replica kill, setup crash, SQL-timeout storm, SIGTERM | Each fault ends with valid outputs and every id written | CPU + Colab | Todo |
+| M4-13 | Compliance README, `training_code/`, `data_manifest.json` | M4 | L | L-13, M3-10 | `/code/README.md`, `training_code/` | Model declarations (name, URL, revision, release date, license, param count from `tools/count_params.py`); data manifest with SHA-256; "no fine-tuning" statement unless DEC-9 | Reviewed against DG §8 checklist | CPU | Todo |
+| M4-14 | `tools/precheck.sh` | M4 | L | M4-07 | `tools/` | DG §10 checks: one line per question, log fields, size, platform | Fails on a deliberately broken result dir | CPU | Todo |
+| M4-15 | Release candidate RC1 | M4 | L | M4-13, M4-14 | — | Image from a tagged commit; uncompressed size measured | ≤ 100 GB uncompressed `docker save` | Docker | Todo |
+| M4-16 | Full rehearsal on E5 | M4 | L | M4-15, L-03 | — | Full training split in the container, exact command | G6: completes within budget; precheck clean | Docker | Todo |
+| L-16 | Container vs Colab comparison | L | M4 | M4-16, L-06 | `eval/` | `compare_runs` report | \|ΔPA\| ≤ 0.01 or differences explained | Docker | Todo |
+
+---
+
+## Phase 7 — Reproducibility checks and release (target 11-14 → 11-16; private test 11-20 → 11-23)
+
+| ID | Title | Owner | Rev | Deps | Package | Deliverable | Acceptance | Env | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| M4-12 | Runbooks | M4 | L | M4-09 | `docs/runbooks/` | Build/export/upload, E5 run, private-test run | The lead can execute each without M4 | — | Todo |
+| L-17 | Second container run (G7) | L | M4 | M4-16 | `eval/` | Two container runs on the same input | Identical submissions or \|ΔPA\| ≤ 0.005 (organizer bound is 0.03) | Docker | Todo |
+| M4-17 | Safety submission | M4 | L | M4-16 | — | Export, md5, upload, second-machine `md5sum -c` | IMPLEMENTATION_PLAN §8.1 steps complete by 11-14 | Docker | Todo |
+| L-08 | Safety submission sign-off | L | — | M4-17 | — | Link, md5, size recorded | Submitted via the official form | — | Todo |
+| M4-18 | Final packaging checks (G8) | M4 | L | L-17 | — | Final image, README final | ≤ 100 GB; md5 verified; frozen config matches last G6 run | Docker | Todo |
+| L-09 | Final submission | L | — | M4-18 | — | Final image submitted | Before 2026-11-16 18:00 (deadline 23:59) | — | Todo |
+| L-22 | Private-test run | L | M4 | L-09 | — | Frozen image run on E5 after 11-20 09:00; `submission.jsonl` uploaded; full `/result` archived | Uploaded before 2026-11-23 23:59; no rebuild of the frozen image | Docker | Todo |
+
+---
+
+## Dependency map (compact)
 
 ```
-L-02 ─► L-04 ──┬─► M1-03..M1-06 ─► M1-09 ─► M1-10 ─────────────┐
-   (11-07)     ├─► M2-03 ─► M2-04 ──────────────────────────────┤
-               ├─► M3-02, M3-03 ─► M3-04 ─► M3-05 (+M3-06/07) ──┼─► L-05 ─► L-06 ─► M3-08/L-13 ─► L-07 (DEC-3) ─► M4-09 ─► M4-10
-               ├─► L-10, M2-06, M2-07 ──────────────────────────┤                                                     │
-               └─► M4-04 ─► M4-05, M4-06, M4-07 ────────────────┘                                                     ▼
-L-03 (E5 host) ─────────────────────────────────────────────────────────────────────────────────► M4-16 ─► M4-17 ─► M4-18 ─► L-09
-M4-01 ─► M3-01, M4-02, M4-03 (base-image validation, day 0–1)
-M1-11 fake catalogs, M3-13 replay fixtures ─► unblock M2/M3/M4/L tests before real components exist
+Phase 1 (done) ── L-21 bootstrap ─┬─ L-04 contract freeze ─────────────────────────────┐
+                                  │                                                     │
+Phase 2   M1: M1-01 → M1-04 → M1-08      M1-06 → M1-07      M1-03 → M1-09 → M1-10 ───┤
+          M2: M2-04 ─┬─ M2-05 (needs M3-02)    M2-06, M2-07 ───────────────────────────┤
+          M3: M3-01 → M3-02 → M3-04 → M3-05 ;  M3-02 → M3-13 → L-20                     │
+          M4: M4-01 → M4-02, M4-03 → M4-05                                              │
+          L : L-11 → L-10 → L-12 ;  L-03 (E5 host, external)                            │
+                                                                                        ▼
+Phase 3   L-05 integrate ─► L-06 full train run ─► M3-08 bake-off + M4-08 projection ─► L-13 DEC-3
+Phase 4   L-06 ─► L-14 error analysis ─► M1-14 / M2-14 / M3-09 ;  L-15 determinism
+Phase 5   L-14 + switches ─► M2-08/09/15, M1-12/13/15, M3-10/11 ─► L-07 decisions
+Phase 6   L-13 + M4-05 ─► M4-09 image ─► M4-10 smoke (needs L-03) ─► M4-13/14 ─► M4-15 RC1 ─► M4-16 rehearsal ─► L-16
+Phase 7   M4-16 ─► M4-17 safety (11-14) ─► L-17 ─► M4-18 ─► L-09 final (11-16) ─► L-22 private run
 ```
 
----
+## Critical path
 
-## 8. Load summary
+`M3-01 → M3-02 HttpModelClient` and `M1-04/M1-06/M1-09 real ingestion (xlsx is 107 of 128 training files)` → `L-05 integrate` → `L-06 first full run` → `L-13 DEC-3` → `M4-09 image` → `M4-16 rehearsal on E5` → `M4-17 safety submission` → `L-09 final`.
 
-| Owner | P1 | P2 | P3 | INT | COL | Total | Available (approx.) |
-|---|---|---|---|---|---|---|---|
-| Lead | 29 | — | — | 26 | 7 | 62 | 75 (after ~15 h of stand-ups, reviews, decisions) |
-| M1 | 38 | 14 | — | 10 | 2 | 64 | 90 |
-| M2 | 33 | 18 | 6 | 8 | — | 65 | 90 |
-| M3 | 34 | 14 | 6 | 6 | 4 | 64 | 90 |
-| M4 | 37 | 4 | — | 22 | 3 | 66 | 90 |
+- Slack is near zero: the deadline is 9 days away. Anything not on this path waits if the path slips (IMPLEMENTATION_PLAN §11).
+- **External dependency: L-03 (E5 host).** Without it there is no target-hardware validation; escalate on 11-08 if not booked.
+- Model choice (DEC-3) gates the image; M3-01 must start on day 1.
 
-Review time (about 1 h per member per day) is part of the slack. P3 hours are spent only if the 11-12 go/no-go approves them.
+## Handoffs
 
----
+| # | Artifact | Producer → consumers | Needed by | Consumers use until then |
+|---|---|---|---|---|
+| H1 | Contracts v1.0.0 (L-04) | L → all | 11-08 12:00 | contracts 0.1.0 (already merged) |
+| H2 | Real catalog on training businesses (M1-04/06/09/10) | M1 → M3, M2, L | 11-09 | `tests/fixtures/split_mini` catalog |
+| H3 | `HttpModelClient` (M3-02) | M3 → M2 (M2-05), M1 (M1-13), L (L-05) | 11-08 EOD | `ScriptedModelClient` |
+| H4 | Replica manager on Colab (M4-03) | M4 → M3, L | 11-08 EOD | manually started `vllm serve` |
+| H5 | Recorded calls + `ReplayModelClient` (M3-13) | M3 → L (L-20), M4 (M4-05), M2 | 11-09 | `ScriptedModelClient` scripts |
+| H6 | Resolver completion (M2-04) | M2 → M3 | 11-09 | P1 subset; unsupported → abstain |
+| H7 | TemporalParams from rulebook (M2-05) | M2 → M3, L | 11-09 | generic `TemporalParams` |
+| H8 | Harness + run records (L-12) | L → all | 11-09 | `datamate.run` + `datamate.eval.score` |
+| H9 | Orchestrator concurrency (M4-05) | M4 → L | 11-10 | sequential `run.py` |
+| H10 | DEC-3 model decision (L-13) | L → M4 (M4-09, M4-13) | 11-09 EOD | reference base image `vllm/vllm-openai:v0.10.1.1` |
+| H11 | Image + `predict.sh` (M4-09) | M4 → L | 11-10 | `python -m datamate.run` |
 
-## 9. v1.0 → v1.1 ID mapping
+## First three actionable tasks per person
 
-| v1.0 | v1.1 | v1.0 | v1.1 | v1.0 | v1.1 |
-|---|---|---|---|---|---|
-| A-01 | M1-01 | B-01 | M2-01 | D-01 | L-10 |
-| A-02 | M1-03 | B-02 | M1-02 | D-02 | L-11 |
-| A-03 | M1-04 | B-03 | M2-02 | D-03 | M2-06 |
-| A-04 | M1-05 | B-04 | M2-03 | D-04 | M2-07 |
-| A-05 | M1-06 | B-05 | M2-04 | D-05 | L-12 |
-| A-06 | M1-07 | B-06 | M2-05 | D-06 | L-13 |
-| A-07 | M1-08 | B-07 | M2-08 | D-07 | L-14 |
-| A-08 | M1-09 | B-08 | M2-09 | D-08 | M2-11 |
-| A-09 | M1-10 | B-09 | M1-13 | D-09 | L-15 |
-| A-10 | M1-12 | B-10 | M2-10 | D-10 | M2-12 |
-| A-11 | M1-14 | B-11 | M2-14 | D-11 | M2-13 |
-| C-01…C-13 | M3-01…M3-13 | E-01…E-18 | M4-01…M4-18 | D-12, D-13, D-14 | L-16, L-17, L-18 |
+| Person | 1 | 2 | 3 |
+|---|---|---|---|
+| Lead | **L-04** review and freeze contracts; accept/revert DC-1…DC-7 | **L-11** verify wire formats on `train/answers.jsonl`; close SPEC V1–V5 | **L-03** book the E5 host (escalate on 11-08 if none) |
+| M1 | **M1-01** training-file inspection report + fixtures | **M1-04** Excel reader (most training files are xlsx) | **M1-09** fast bulk load (current reader is too slow for real files) |
+| M2 | **M2-01** rulebook (train vs public_test) and calendar inspection | **M2-04** resolver completion + property test | **M2-05** TemporalParams extraction against `ScriptedModelClient`, then real client |
+| M3 | **M3-01** serve 2–3 candidate models on Colab | **M3-02** `HttpModelClient` (unit-tested on a local fake server) | **M3-13** record calls + `ReplayModelClient` for CPU CI |
+| M4 | **M4-01** base-image lock | **M4-02** Colab bootstrap notebook | **M4-03** replica manager |
 
-New in v1.1: L-19, L-20, M1-11.
-
----
-
-## 10. Backlog (not scheduled; only if time remains after 11-12 and approved by the lead)
+## Not scheduled (only if time remains after 11-12 and approved by the lead)
 
 | ID | Item | Reason deferred |
 |---|---|---|
-| X-01 | LoRA fine-tuning experiment (DEC-9) | Off critical path; requires full DG §8 evidence package |
-| X-02 | Embedding-based entity linking | Parameter budget; lexical linking first (AP §8.3) |
-| X-03 | Thinking-mode solving with bounded budget (DEC-10) | Runtime and reproducibility cost; only if bake-off shows a gain |
-| X-04 | TP=2 serving path | Contingency only (DEC-13) |
+| X-01 | LoRA fine-tuning (DEC-9) | Off critical path; needs full DG §8 evidence package |
+| X-02 | Embedding-based entity linking | Parameter budget; lexical linking first |
+| X-03 | Thinking-mode solving (DEC-10) | Runtime and reproducibility cost |
+| X-04 | TP=2 serving | Contingency only (DEC-13) |
+
+## ID history
+- Kept from v1.1 with the same meaning: all `L-`, `M1-`…`M4-` IDs listed above.
+- New in v2.0: L-21, L-22, M1-15, M2-15, M4-19.
+- Changed: M1-11 is satisfied by the real fixture catalog instead of fake catalogs; M4-06 drops `--stub` mode in favor of the scripted fixture path.
+- v1.0 → v1.1 mapping: see `TASKS.md` v1.1 in git history (commit `94c6132`).

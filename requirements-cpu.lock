@@ -1,0 +1,15 @@
+# Exact versions used to validate the CPU development setup (2026-11-07, Python 3.12.3).
+# Install with: pip install -r requirements-cpu.lock && pip install -e . --no-deps
+# The production lock is generated inside the Docker base image (TASKS M4-01); it supersedes this file there.
+annotated-types==0.8.0
+duckdb==1.5.6
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.7.0
+pydantic==2.14.3
+pydantic_core==2.50.4
+Pygments==2.21.0
+pytest==9.2.0
+ruff==0.17.4
+typing-inspection==0.4.5
+typing_extensions==4.16.0

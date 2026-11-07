@@ -1,0 +1,19 @@
+﻿Mã đơn,Ngày đặt,Mã hàng,Tên hàng,Số lượng,Đơn giá,Giảm giá dòng,Thành tiền,Trạng thái,Khách hàng
+DH001,2026-01-20,SP01,Cà phê sữa (M),2,29000,0,58000,Hoàn thành,Chị Lan
+DH002,2026-01-25,SP02,Trà đào (M),1,35000,0,35000,Hoàn thành,Khách lẻ
+DH003,2026-02-03,SP01,Cà phê sữa (M),3,29000,0,87000,Hoàn thành,Anh Tú
+DH003,2026-02-03,SP04,Bánh mì que,2,15000,0,30000,Hoàn thành,Anh Tú
+DH004,2026-02-10,SP02,Trà đào (M),2,35000,0,70000,Huỷ,Chị Lan
+DH005,2026-02-14,SP03,Bạc xỉu (M),2,32000,0,64000,Hoàn thành,Anh Tú
+DH005,2026-02-14,SP02,Trà đào (M),1,35000,5000,30000,Hoàn thành,Anh Tú
+DH006,2026-02-14,SP01,Cà phê sữa (M),1,29000,0,29000,Trả hàng,Khách lẻ
+DH007,2026-02-24,SP01,Cà phê sữa (M),1,29000,0,29000,Hoàn thành,Chị Lan
+DH007,2026-02-24,SP03,Bạc xỉu (M),1,32000,0,32000,Hoàn thành,Chị Lan
+DH008,2026-02-27,SP02,Trà đào (M),2,35000,999,69001,Đang giao,Anh Tú
+DH009,2026-03-02,SP01,Cà phê sữa (M),2,29000,0,58000,Hoàn thành,Chị Lan
+DH009,2026-03-02,SP03,Bạc xỉu (M),1,32000,0,32000,Hoàn thành,Chị Lan
+DH010,2026-03-03,SP03,Bạc xỉu (M),1,32000,0,32000,Hoàn thành,Khách lẻ
+DH010,2026-03-03,SP04,Bánh mì que,1,15000,0,15000,Hoàn thành,Khách lẻ
+DH011,2026-03-04,SP01,Cà phê sữa (M),1,29000,0,29000,Hoàn thành,Anh Tú
+DH011,2026-03-04,SP04,Bánh mì que,2,15000,0,30000,Hoàn thành,Anh Tú
+DH012,2026-03-06,SP02,Trà đào (M),5,35000,0,175000,Hoàn thành,Chị Lan

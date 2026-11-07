@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "datamate"
+version = "0.1.0"
+description = "DataMate agent for Zalo AI Challenge 2026: Vietnamese questions over business CSV/Excel/SQLite data."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+# Runtime dependencies for the CPU path. GPU/serving dependencies (vLLM, torch,
+# transformers) come from the Docker base image and are NOT listed here.
+dependencies = [
+    "duckdb>=1.1,<2",
+    "pydantic>=2.7,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = ["gpu: requires a GPU and model weights (never run in CPU CI)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["datamate"]
+known-local-folder = ["conftest"]

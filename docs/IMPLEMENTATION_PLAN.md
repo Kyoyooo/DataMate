@@ -3,12 +3,13 @@
 | Field | Value |
 |---|---|
 | **Document** | `IMPLEMENTATION_PLAN.md` |
-| **Version** | 1.1 — one lead and four members |
-| **Status** | Baseline schedule; updated daily by the lead |
-| **Date** | 2026-11-06 (GMT+7) |
+| **Version** | 2.0 — rebased on the bootstrap codebase |
+| **Status** | Phases, schedule, and process. Task status lives **only** in `TASKS.md` |
+| **Date** | 2026-11-07 (GMT+7) |
 | **Window** | 2026-11-06 (Fri, afternoon) → 2026-11-16 (Mon) 23:59 GMT+7 — final Docker solution deadline |
 | **Inputs** | `ARCHITECTURE_PROPOSAL.md` v2.1 (AP), `ARCHITECTURE.md` v1.1 (ARCH), `SPEC.md` v1.1 (SPEC) |
-| **Task list** | `TASKS.md` v1.1 (IDs `L-xx`, `M1-xx` … `M4-xx`; the prefix is the owner) |
+| **Task list** | `TASKS.md` v2.0 (IDs `L-xx`, `M1-xx` … `M4-xx`; the prefix is the owner) |
+| **Engineering workflow** | `CONTRIBUTING.md` (branches, PRs, reviews, GitHub settings) |
 
 All times are GMT+7. Dates are written `MM-DD` (2026).
 
@@ -30,20 +31,19 @@ When time is short, the priority order is: **compliance and validity → determi
 ### 2.1 Roles
 | Role | Person | Mission | Owns (packages) | Components |
 |---|---|---|---|---|
-| **Lead** | Team lead | Keep the pieces compatible and the measurements trustworthy; make the calls | `contracts/`, `eval/`, CI, `CODEOWNERS` | C14; contract module; integration; decisions; submissions |
-| **M1 — Data & Semantics** | Member 1 | Turn arbitrary business files into a correct, queryable catalog | `ingest/`, `catalog/`, `entities/`, `lexicon/`, `semantics/` | C2, C3 (P2), C6 (P2) |
+| **Lead** | Team lead | Keep the pieces compatible and the measurements trustworthy; make the calls | `contracts/`, `eval/`, `tests/integration/`, CI, `CODEOWNERS` | C14; contract module; integration; decisions; submissions |
+| **M1 — Data & Semantics** | Member 1 | Turn arbitrary business files into a correct, queryable catalog | `ingest/`, `catalog/`, `lexicon/`; later `entities/`, `semantics/` (P2) | C2, C3 (P2), C6 (P2) |
 | **M2 — Rules, Time & Answers** | Member 2 | Everything deterministic between the rulebook and the wire value | `rules/`, `temporal/`, `decision/`, `formatting/` | C1, C5, C9, C10 |
 | **M3 — Reasoning Engine** | Member 3 | Get correct SQL out of the model, reliably and reproducibly | `llm/client.py`, `prompts/`, `parse/`, `solver/`, `sandbox/` | C4, C7, C8, C13 client |
-| **M4 — Platform & Compliance** | Member 4 | Make it run inside the container, on time, with compliant outputs | `run.py`, `config.py`, `runtime/`, `llm/replicas.py`, `llm/inprocess.py`, Docker, `tools/`, compliance docs | C11, C12, C13 replicas |
+| **M4 — Platform & Compliance** | Member 4 | Make it run inside the container, on time, with compliant outputs | `run.py`, `config.py`, `runtime/` (orchestration, writer), `llm/replicas.py` (model serving), Docker, `tools/`, compliance docs | C11, C12, C13 replicas |
 
 **Why this split.**
 - Each member owns a contiguous slice of the pipeline with **few, typed seams** to the others (§4 and ARCH §10), so four people can build at once.
 - The lead owns the **contracts** (what crosses the seams) and the **scorer and harness** (how we know it works). The scorer is written by someone other than the formatter's author (M2), so the oracle is independent of the code it checks.
 - M2 holds all deterministic answer logic (dates in, typed answer out). This keeps rule interpretation, the gate, and formatting under one owner who can see how they interact.
-- Planned load is balanced: 62–66 hours each (§12).
 
 ### 2.2 The lead's responsibilities
-1. Contracts: write v1.0.0 by 11-07 12:00; approve every later change (SPEC §15).
+1. Contracts: 0.1.0 is merged (bootstrap); review and freeze v1.0.0 by 11-08 12:00 (TASKS L-04); approve every later change (SPEC §15).
 2. Integration: run the daily merge window; keep `main` green; run the walking skeleton and the first full run.
 3. Measurement: own the scorer, harness, nightly runs, determinism checks, and error analysis. No accuracy claim counts unless it comes from the harness with a run record.
 4. Decisions: DEC-3, -4, -8, -10, -11, -13, -14, P3 go/no-go, freeze (§7).
@@ -61,23 +61,20 @@ When time is short, the priority order is: **compliance and validity → determi
 
 ---
 
-## 3. Milestones
+## 3. Phases and milestones
 
-| Date | Milestone / integration stage | Exit criteria | Gate (AP §9.2) |
+The backlog in `TASKS.md` is organized in the same seven phases. Dates are targets; the exit criterion is what counts.
+
+| Phase | Target | Content | Exit criterion |
 |---|---|---|---|
-| Fri 11-06 PM | **Kickoff** | Roles assigned; repo created; E5 search started; Colab G4 access confirmed | — |
-| Sat 11-07 12:00 | **I0 Contracts frozen** | `contracts/` v1.0.0 merged; schemas exported; test doubles and conformance suites available | Contract tests green |
-| Sat 11-07 EOD | **M0 Foundations** | Scorer passes Brief examples; data-inspection report; fake catalogs published; Colab lock env; **E5 identified (DEC-14)**; DEC-11/13 decided | G0 |
-| Sun 11-08 EOD | **I1 Walking skeleton** | `run.main` end-to-end on fixtures with `ReplayModelClient`; valid outputs and logs; determinism CI green | Integration test green |
-| Mon 11-09 EOD | **M1 / I2 Baseline** | Full training split on G4; PA per type; runtime projection; **DEC-3, DEC-8, DEC-10 decided** | G1, G2, G3 |
-| Tue 11-10 EOD | **First container build** | Image builds on E4; smoke run on E5 (10 questions, scoring command) | — |
-| Wed 11-11 EOD | **M2 / I3 Accuracy** | P2 features merged or dropped; determinism check; gate value check; **DEC-4 decided** | G4, G5 |
-| Thu 11-12 EOD | **P3 go/no-go; release candidate** | P3 decided; RC1 image built; README and declarations drafted | — |
-| Fri 11-13 EOD | **M3 / I4 Rehearsal + freeze** | Full training split in the container on E5 with the exact scoring command | G6 |
-| Sat 11-14 | **Safety submission** | Solution #1 uploaded; md5 verified from a second machine | G8 (partial) |
-| Sun 11-15 EOD | **M4 Final candidate** | Re-run comparison; packaging checks; final README | G7, G8 |
-| Mon 11-16 18:00 | **M5 Final** | Final image uploaded, verified, submitted | — |
-| After release (date TBC, AP Q6) | **Private-test run** | Frozen image run on E5; `submission.jsonl` uploaded | — |
+| **1. Shared foundation and fixture pipeline** | 11-07 | Package, contracts 0.1.0, fixture business, scripted CPU pipeline, tests, CI file, docs (TASKS L-21) | **Reached 11-07:** `pytest` green on CPU; fixture run exits 0; production mode refuses dev-only components |
+| **2. Real P1 components in parallel** | 11-08 → 11-09 | Each owner replaces their stand-in with the real component behind the same contracts | Each component's acceptance tests pass on CPU; contracts v1.0.0 frozen (11-08 12:00) |
+| **3. First real end-to-end run on Colab** | 11-09 | `HttpModelClient` + real ingestion on the full training split | All 3,000 questions written with valid logs; PA per type from the harness; runtime projection; **DEC-3** |
+| **4. Evaluation and correctness fixes** | 11-10 → 11-11 | Error analysis, owner fixes, determinism check | Top error classes owned; two identical Colab runs within \|ΔPA\| ≤ 0.005 |
+| **5. P2 features (only when justified)** | 11-10 → 11-12 | Switch-guarded features; each turned on only with a held-out gain | Each switch decided by L-07 with a run record; **feature freeze 11-13** |
+| **6. Docker and target hardware** | 11-10 → 11-13 | Image, `predict.sh`, E5 smoke and full rehearsal | G6: full training split in the container with the exact organizer command |
+| **7. Reproducibility and release** | 11-14 → 11-16 | Second container run, safety submission (11-14), final (11-16 18:00) | G7/G8; final image verified from a second machine |
+| Private test | 11-20 → 11-23 | Run the frozen image; upload | Uploaded before 11-23 23:59 (TASKS L-22) |
 
 ---
 
@@ -85,9 +82,9 @@ When time is short, the priority order is: **compliance and validity → determi
 
 ### 4.1 Interface first
 1. **Contracts before code.** Every type that crosses a package boundary lives in `contracts/` (SPEC §5) and is frozen at I0. Members implement against the contracts, not against each other's code.
-2. **Fakes before real components.** By 11-07 EOD every consumer has something to code against: test doubles (L-04), fake catalogs (M1-11), scripted model clients (L-04); by 11-08 12:00 recorded model calls (M3-13). See the handoff table in `TASKS.md` §6.
+2. **Stand-ins before real components.** Every consumer already has something to code against: the fixture business catalog (`tests/fixtures/split_mini`), `ScriptedModelClient`, the in-process executor, and generic `TemporalParams`; recorded model calls follow (M3-13). Each Phase 2 row in `TASKS.md` names its stand-in.
 3. **Public API only.** A package may import another package only through names exported in that package's `__init__.py` `__all__` (SPEC §4.3). Internal refactors never break other members.
-4. **Conformance suites.** Every implementation of a protocol (`ModelClient`, `Executor`, `LunarCalendar`, `SubmissionSink`) must pass the shared suite in `tests/contract/conformance/` (SPEC §14.3). The test doubles pass the same suite, so a component tested against a double works against the real thing.
+4. **Shared tests over ceremony.** Real implementations must pass the same tests their stand-ins pass (for example, `HttpModelClient` and `ScriptedModelClient` both return errors as `ModelCall.error`). Formal conformance suites are added only when a second implementation of a protocol exists.
 5. **Consumer tests.** When a member relies on a behavior of another member's output (for example, "SchemaCard lists distinct values for status columns"), the consumer writes a test in `tests/contract/consumers/`. The producer cannot merge a change that breaks it (SPEC §14.4).
 6. **Switches for anything unfinished.** P2/P3 code merges with its switch off (SPEC §1.3), so partially finished work never changes production behavior.
 
@@ -158,23 +155,12 @@ E5 requirements: sm_120 GPU(s), preferably 2 × RTX 5090; NVIDIA driver R570 or 
 
 ## 6. Engineering workflow
 
-### 6.1 Branching and merging
-- Trunk-based: short-lived branches `<owner>/<task-id>-<slug>` (for example `m2/M2-04-resolver`), merged in the daily window.
-- `main` always passes unit, contract, conformance, consumer, integration, and determinism tests on CPU.
-- Contract changes follow SPEC §15 and are merged only by the lead.
+Branching, PR size, review rules, the definition of done, and the recommended GitHub settings are in `CONTRIBUTING.md`. In short: short-lived `<owner>/<task-id>-<slug>` branches, small PRs into `main`, the required reviewer from §4.2, and every shared-interface change reviewed by its consumers.
 
-### 6.2 Definition of done (per task)
-1. Code matches the SPEC section named in the task.
-2. Every MUST in that section has a test named after it (`test_spec_<section>_<short_name>`, SPEC §14.2); tests pass on CPU.
-3. Conformance and consumer tests for the touched packages pass.
-4. No new static-check failures (import graph, public-API rule, id-literal scan, `ruff`, `mypy` where required).
-5. Accuracy-affecting tasks: run record attached (held-out PA before/after).
-6. Runtime-affecting tasks: G4 timing attached.
-7. Approved by the required reviewer (§4.2).
-
-### 6.3 Experiment discipline
+### 6.1 Experiment discipline
 - A feature is merged **on** only if it improves held-out PA and passes the runtime and determinism checks; otherwise it is merged **off** or dropped.
-- No tuning against the public leaderboard; at most 5 public sanity submissions per day (AP §6.12).
+- No tuning against the public leaderboard; at most 5 public sanity submissions per day (Brief §5.3).
+- No accuracy claim without a harness run record; fixture results are plumbing checks, not accuracy.
 
 ---
 
@@ -216,121 +202,28 @@ E5 requirements: sm_120 GPU(s), preferably 2 × RTX 5090; NVIDIA driver R570 or 
 
 ---
 
-## 9. Day-by-day plan
+## 9. Day-by-day focus
 
-### Fri 11-06 (afternoon) — Kickoff
-| Who | Work |
-|---|---|
-| Lead | Assign M1–M4; decide DEC-11 and DEC-13; start E5 search; create repository, CI, `CODEOWNERS` (L-01, L-02, L-03, L-19) |
-| M1 | Inspect training split; start fixture set (M1-01) |
-| M2 | Inspect `rulebook.md` and `calendar.csv` (M2-01) |
-| M3 | Prepare Colab G4 venvs for candidate vLLM versions (M3-01) |
-| M4 | Pull candidate base images; extract locks (M4-01) |
+Task IDs refer to `TASKS.md`; status is tracked there only.
 
-### Sat 11-07 — I0 and M0
-| Who | Work |
-|---|---|
-| Lead | Format decisions by 10:00 (L-11); contracts v1.0.0 by 12:00 (L-04); scorer (L-10) |
-| M1 | `fold()` and lexicon (M1-02); readers (M1-03–M1-05); numeric parser (M1-06); **fake catalogs (M1-11)** |
-| M2 | Calendar (M2-02); period arithmetic (M2-03); start resolver (M2-04) |
-| M3 | Model client (M3-02); prompt rendering (M3-03); serve tests (M3-01) |
-| M4 | Colab env and data snapshots (M4-02); replica manager (M4-03); writer (M4-04) |
-| **Exit** | G0; fake catalogs and client available; E5 identified |
-
-### Sun 11-08 — I1 walking skeleton
-| Who | Work |
-|---|---|
-| Lead | Integrate components into the skeleton (L-05); determinism CI (L-20) |
-| M1 | Date parser (M1-07); Excel structure detection (M1-08); materialization and SchemaCard (M1-09, M1-10) |
-| M2 | Resolver by 12:00 (M2-04); formatter (M2-06); rule gate (M2-07) |
-| M3 | Parser (M3-04); solver (M3-05, M3-06); sandbox (M3-07); **recorded fixtures by 12:00 (M3-13)** |
-| M4 | Orchestrator (M4-05); `run.py` with stub mode (M4-06); records (M4-07) |
-| **Exit** | I1 integration test and determinism CI green |
-
-### Mon 11-09 — M1 baseline
-| Who | Work |
-|---|---|
-| Lead | First full run by 15:00 (L-06); harness (L-12); bake-off analysis (L-13); **DEC-3, DEC-8, DEC-10** at 18:00 |
-| M1 | Fix ingestion crashers from the full run (M1-14) |
-| M2 | TemporalParams extraction (M2-05); fixes (M2-14) |
-| M3 | Bake-off runs (M3-08) |
-| M4 | Runtime projection (M4-08); Dockerfile draft (M4-09) |
-| **Exit** | G1, G2, G3 |
-
-### Tue 11-10 — Error analysis and first container
-| Who | Work |
-|---|---|
-| Lead | Error analysis with owners (L-14); nightly report (L-18) |
-| M1 | Entity linker (M1-12, P2) |
-| M2 | RuleProfile (M2-08); table conventions (M2-11) |
-| M3 | Few-shot bank builder (M3-10); prompt improvements start (M3-09) |
-| M4 | Image build (M4-09); E5 smoke (M4-10) |
-| **Exit** | Error-analysis report; container smoke passes |
-
-### Wed 11-11 — M2 accuracy
-| Who | Work |
-|---|---|
-| Lead | Determinism check (L-15); merge or drop each P2 feature; **DEC-4** |
-| M1 | Compiled views (M1-13, P2) |
-| M2 | Lunar windows (M2-09); perturbation suite (M2-10); gate value check (M2-12) |
-| M3 | Prompt improvements (M3-09); Python fallback (M3-11) |
-| M4 | Fault-injection tests (M4-11) |
-| **Exit** | G4, G5 |
-
-### Thu 11-12 — P3 decision and release candidate
-| Who | Work |
-|---|---|
-| Lead | **P3 go/no-go**; LoRA not started unless approved (AP DEC-9) |
-| M1 | Fixes (M1-14) |
-| M2 | Calibrator experiment if approved (M2-13) |
-| M3 | Multi-strategy experiment if approved (M3-12) |
-| M4 | Runbooks (M4-12); README and `training_code/` (M4-13); precheck (M4-14); RC1 (M4-15) |
-| **Exit** | RC1 image built |
-
-### Fri 11-13 — M3 rehearsal and freeze
-| Who | Work |
-|---|---|
-| M4 | Full rehearsal on E5 (M4-16) |
-| Lead | Compare container and G4 runs (L-16); **feature freeze** after G6 |
-| M1, M2, M3 | Fix only defects found by the rehearsal |
-| **Exit** | G6 |
-
-### Sat 11-14 — Safety submission
-| Who | Work |
-|---|---|
-| M4 + Lead | Export, checksum, upload, verify, submit (M4-17, L-08) |
-| Lead | Second container run comparison (L-17) |
-
-### Sun 11-15 — M4 final candidate
-| Who | Work |
-|---|---|
-| All | Fixes only for defects found since 11-13, each re-validated on E5 |
-| M4 | Final README; packaging checks (M4-18) |
-| Lead | Approve final candidate |
-
-### Mon 11-16 — M5 final
-| Time | Step |
-|---|---|
-| by 12:00 | Final image built; G6 re-run on E5 if anything changed since the safety submission |
-| by 15:00 | Export, md5, upload started |
-| by 18:00 | Second-machine `md5sum -c` OK; form submitted (L-09) |
-| 18:00–23:59 | Buffer only; no code changes |
+| Day | Lead | M1 | M2 | M3 | M4 |
+|---|---|---|---|---|---|
+| Sat 11-07 | L-21 bootstrap (done); L-04, L-11 | M1-01 | M2-01 | M3-01 | M4-01 |
+| Sun 11-08 | L-04 freeze 12:00; L-03 escalate if no E5; L-10 | M1-04, M1-09, M1-06 | M2-04, M2-05 (scripted) | M3-02, M3-03 | M4-02, M4-03 |
+| Mon 11-09 | L-05, L-12, L-06; **DEC-3** | M1-07, M1-08, M1-10 | M2-05 (real), M2-06, M2-07 | M3-04, M3-05, M3-13 | M4-05, M4-08 |
+| Tue 11-10 | L-14, L-18, L-20 | M1-14, M1-05 | M2-14, M2-08 | M3-09, M3-07 | M4-09, M4-10 |
+| Wed 11-11 | L-15, L-07 (P2 switches) | P2 by evidence (M1-15, M1-12) | P2 by evidence (M2-09, M2-12) | M3-10, M3-11 | M4-11, M4-19 |
+| Thu 11-12 | L-07 (P3 go/no-go) | M1-14 | M2-14 | M3-09 | M4-12, M4-13, M4-14, M4-15 |
+| Fri 11-13 | L-16; **freeze** | fixes only | fixes only | fixes only | M4-16 |
+| Sat 11-14 | L-08, L-17 | — | — | — | M4-17 |
+| Sun 11-15 | approve final candidate | fixes only, each re-validated on E5 | ← | ← | M4-18 |
+| Mon 11-16 | L-09 by 18:00 | — | — | — | support |
 
 ---
 
 ## 10. Critical path
 
-```
-L-04 contracts ─► M1 catalog (M1-03..M1-10) ─┐
-                 M2 temporal (M2-03, M2-04) ──┤
-                 M3 solver (M3-02..M3-07) ────┼─► L-05 skeleton ─► L-06 full run ─► DEC-3 ─► M4-09 image ─► M4-16 rehearsal ─► M4-17 safety ─► L-09 final
-                 M2 answer (M2-06, M2-07) ────┤                                                      ▲
-                 M4 runtime (M4-03..M4-07) ───┘                                                      │
- DEC-14 E5 host (L-03) ──────────────────────────────────────────────────────────────────────────────┘
-```
-- **Longest chain:** contracts → catalog → solver → full run → model decision → image → rehearsal → submission.
-- **External dependency:** the E5 host (DEC-14). Without it, the rehearsal and the private-test run cannot happen (AP RISK-1).
-- **Parallel track:** base-image validation on G4 (M3-01, M4-01) starts on day 0 because it gates DEC-3.
+See `TASKS.md` "Critical path". Summary: **real ingestion (xlsx) and `HttpModelClient` → first full run → DEC-3 → image → E5 rehearsal → safety submission → final.** The E5 host (L-03) is the main external dependency.
 
 ---
 
@@ -352,16 +245,6 @@ L-04 contracts ─► M1 catalog (M1-03..M1-10) ─┐
 
 ---
 
-## 12. Effort overview
+## 12. Effort
 
-From `TASKS.md` §8, in engineer-hours.
-
-| Owner | P1 | P2 | P3 | INT | COL | Total | Available (approx.) |
-|---|---|---|---|---|---|---|---|
-| Lead | 29 | — | — | 26 | 7 | 62 | 75 (after ~15 h of stand-ups, reviews, decisions) |
-| M1 | 38 | 14 | — | 10 | 2 | 64 | 90 |
-| M2 | 33 | 18 | 6 | 8 | — | 65 | 90 |
-| M3 | 34 | 14 | 6 | 6 | 4 | 64 | 90 |
-| M4 | 37 | 4 | — | 22 | 3 | 66 | 90 |
-
-That leaves about 13 hours of slack for the lead and 24–26 hours for each member, for defects found by full runs and for reviews (about 1 h per day each). P3 hours are spent only if the 11-12 go/no-go approves them.
+Hour estimates from v1.1 were removed when the backlog was rebased on the bootstrap codebase; the lead re-estimates at the 11-08 stand-up if needed. Review time (about 1 h per member per day) remains part of the slack.

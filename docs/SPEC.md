@@ -1134,3 +1134,39 @@ Question: `{"id": "q_00042", "business_id": "biz_007", "question": "doanh thu th
 | M2 | `SplitContext`, `TemporalParams`, `TimeWindow`, `LunarCalendar`, `Decision`, `SubmissionRecord` formatting | `QuestionFrame`, `SolverAttempt`, `BusinessCatalog`, `ModelClient` | `fixture_split_context()`, literal windows | `resolve_windows` P1 (11-08 12:00) |
 | M3 | `QuestionFrame`, `SolverOutput`, `SolverAttempt`, `ExecutionResult`, `ModelClient` implementation, prompts, recorded `ModelCall`s | `SplitContext`, `BusinessCatalog`, `TimeWindow`, `fold()` | `ScriptedModelClient`, `ReplayModelClient`, `FakeExecutor` | Client (11-07); recorded fixtures (11-08 12:00) |
 | M4 | `run.main`, stub mode, Orchestrator, Writer, `LogRecord`, replicas, Docker image, compliance artifacts | Everything | `InMemorySink`, direct pipeline calls | Colab env + replicas (11-07); `run.main` stub mode (11-08) |
+
+---
+
+## 18. Bootstrap corrections and deferrals (2026-11-07, pending lead approval)
+
+The bootstrap codebase (`src/datamate`, contracts `0.1.0`) implements a **P1 subset** of this specification. It does **not** claim full compliance. This section records (a) corrections to this specification found while inspecting the actual train/public_test data and rulebooks, and (b) requirements the bootstrap deliberately defers. Each correction is a proposal until the lead approves it through §15; until then the code follows the correction, because the original text contradicts the data.
+
+### 18.1 Design corrections
+
+| ID | Correction | Evidence | Affects |
+|---|---|---|---|
+| **DC-1** | **Money rounds to whole VND; percents and other measures to 2 decimals.** `QuestionFrame.numeric_kind ∈ {money, count, measure}` (required for `number`) travels with the typed value; the formatter rounds money to `formatting.money_decimals` (0) and everything else, including every percent, to `formatting.default_decimals` (2), mode `ROUND_HALF_UP`. Replaces §7.10 "quantize everything to 0.01". | Rulebook §9 (train and public_test): money is whole VND and an average of money is money; §3: "nửa đồng làm tròn lên". All 1,884 training `number` references are integers. | §5.7, §7.10, V3 |
+| **DC-2** | **Two kinds of list.** `QuestionFrame.list_order ∈ {ranked, question_order}` (required for `list`); `ranking` is required only for `ranked`. Ranked lists are re-sorted by the formatter (§7.10); `question_order` lists (SQL columns `ord`, `item`) keep the question's order and are never re-sorted. Replaces invariant §5.9-2 "ranking present iff list". | Training references include `[Jan, Feb, Mar revenue]` "theo thứ tự thời gian" and `[whole boxes, loose units]`; sorting these by value would be wrong. Rulebook §9: "Câu hỏi nhiều số thì ghi list theo đúng thứ tự câu hỏi nêu". | §5.7, §5.9, §7.7.3, §7.10, V1 |
+| **DC-3** | **Zero data coverage → `unanswerable`, not `abstain`.** Any resolved window (primary, comparison, or baseline) with `coverage_ratio = 0` yields `unanswerable` (`D_UNANSWERABLE_OUT_OF_RANGE`), configurable to `abstain` via `decision.zero_coverage`. Windows and coverage are capped at `as_of_date` (records after "today" have not happened). Replaces §7.9 rule 5. | Rulebook §7 (both splits): a period entirely outside the data range is unanswerable, "không phải 0". Training example: "tháng 2/2025 thay đổi bao nhiêu % so với tháng liền trước" → `unanswerable`. | §7.5, §7.9, V7 |
+| **DC-4** | **Missing information is never zero.** NULL or no rows where a value is required → `E_EMPTY_RESULT` → `abstain`, and is not sent to repair. A computed `0` (e.g. `COALESCE(SUM(qty), 0)` over a covered period) is an answer. Non-finite results (DuckDB returns `inf` for `1/0`) → `D_IMPLAUSIBLE` → abstain. | Rulebook §7; DuckDB behavior verified locally. | §7.7.4, §7.7.5, §7.9 |
+| **DC-5** | **Synchronous `ModelClient`.** `complete(*, stage, template_id, messages, json_schema, max_tokens, call_id) -> ModelCall`, called from worker threads; no asyncio. | Simpler for five parallel developers; HTTP calls to vLLM release the GIL, so a thread pool gives the same concurrency. | §3, §5.10, §7.12, §7.13 |
+| **DC-6** | **Invented time spans are invalid output.** A `TimeRef.span` not found in the question (compared after `fold`) makes the frame invalid (`E_PARSE_INVALID`, abstain) instead of being dropped. | Dropping a time constraint silently changes the question into an all-time question, which risks −1. | §5.9-4, §7.4 |
+| **DC-7** | **Logs are one JSONL file.** Per-question records go to `/result/logs/questions.jsonl`. | DG §3.3: "Any format is accepted", one record per question. | §8.3 (confirms) |
+
+### 18.2 Deferred in the bootstrap (tracked in `TASKS.md`)
+
+| Requirement | Bootstrap state | Task |
+|---|---|---|
+| §5.1 strict pydantic mode, exported JSON Schemas, schema-diff CI | Frozen, `extra="forbid"` models; no strict mode; no exported schemas | L-04 |
+| §5.10 `ReplayModelClient`, `FakeExecutor`, conformance suites | Only `ScriptedModelClient` (dev-only) | M3-13, L-04 |
+| §7.1 TemporalParams from the rulebook (model call, span validation); calendar validation | Generic defaults, `source="generic"`, logged with `F_TEMPORAL_GENERIC` | M2-05, M2-02 |
+| §7.2 ingestion: encodings, VN/EN separators, suffixes, non-ISO dates, Excel, SQLite, header/total detection, joins, budgeted SchemaCard | Fixture CSV reader only (UTF-8, ISO dates, plain numbers); Excel/SQLite skipped with a warning; business `failed` if nothing readable. **Too slow for real data**: row-by-row insert did not finish the 30 training businesses within 10 minutes | M1-03…M1-10 |
+| §7.4 abbreviation normalization; JSON-schema-constrained decoding | Not implemented | M1-02, M3-02, M3-04 |
+| §7.5 year-omitted date ranges, rolling weeks/months, same period last year, "same days of previous month", lunar windows, shifts | `unsupported` → abstain | M2-04, M2-09 |
+| §7.7 context budgeting, few-shot bank, Python fallback, soft deadline | Not implemented | M3-05, M3-10, M3-11 |
+| §7.8 process isolation (killable pool, RLIMIT_AS) | In-process read-only DuckDB with external access disabled, locked config, timer interrupt. **Not process isolation.** | M3-07 |
+| §7.9 fuzzy catalog check | Token-containment check, permissive (in doubt → not unanswerable) | M2-07 |
+| §7.12 replicas, concurrency, deadlines, degrade mode, global stop, SIGTERM | Sequential, single process | M4-05 |
+| §7.13 `HttpModelClient`, replica manager | Not implemented; production config fails at startup with exit 2 | M3-02, M4-03 |
+| §7.14 harness, folds, run records, `compare_runs` | Scorer only (`datamate.eval.score`) | L-10, L-12 |
+| §2.1 `predict.sh`, Docker image | Not implemented | M4-09 |

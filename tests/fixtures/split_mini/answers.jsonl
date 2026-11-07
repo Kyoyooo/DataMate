@@ -1,0 +1,13 @@
+{"id": "fx_q01", "type": "number", "answer": 130001, "alias": []}
+{"id": "fx_q02", "type": "number", "answer": 65001, "alias": []}
+{"id": "fx_q03", "type": "percent", "answer": 16.67, "alias": []}
+{"id": "fx_q04", "type": "list", "answer": ["Cà phê sữa (M)", "Bánh mì que", "Bạc xỉu (M)"], "alias": [["SP01"], ["SP04"], ["SP03"]]}
+{"id": "fx_q05", "type": "list", "answer": [93000, 341001], "alias": []}
+{"id": "fx_q06", "type": "date", "answer": "2026-02-03", "alias": []}
+{"id": "fx_q07", "type": "unanswerable", "answer": null, "alias": []}
+{"id": "fx_q08", "type": "number", "answer": 0, "alias": []}
+{"id": "fx_q09", "type": "unanswerable", "answer": null, "alias": []}
+{"id": "fx_q10", "type": "boolean", "answer": true, "alias": []}
+{"id": "fx_q11", "type": "string", "answer": "Anh Tú", "alias": []}
+{"id": "fx_q12", "type": "number", "answer": 4, "alias": []}
+{"id": "fx_q13", "type": "table", "answer": {"columns": ["khach_hang", "doanh_thu"], "rows": [["Anh Tú", 280001], ["Chị Lan", 61000]]}, "alias": [[], []]}

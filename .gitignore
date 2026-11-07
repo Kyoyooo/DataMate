@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Competition data and archives: never commit (large; public test must not be redistributed)
+/train/
+/public_test/
+/private_test/
+*.zip
+*.tar
+*.tar.gz
+*.tar.gz.md5
+
+# Run outputs and scratch
+/out/
+/runs/
+/result/
+*.duckdb
+*.duckdb.wal
+
+# Model weights
+/models/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

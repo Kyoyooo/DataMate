@@ -1,0 +1,7 @@
+{
+  "work_dir": "out/work",
+  "model": {
+    "backend": "scripted",
+    "script_path": "tests/fixtures/scripted/split_mini.jsonl"
+  }
+}

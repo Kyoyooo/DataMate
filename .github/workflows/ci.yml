@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install (CPU only, pinned)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-cpu.lock
+          pip install -e . --no-deps
+      - name: Lint
+        run: ruff check src tests
+      - name: Tests
+        run: python -m pytest
+      - name: Fixture pipeline (development path, scripted model)
+        run: |
+          python -m datamate.run --dev --config config/dev.json \
+            --data-dir tests/fixtures/split_mini --result-dir out/fixture
+          python -m datamate.eval.score --pred out/fixture/submission.jsonl \
+            --answers tests/fixtures/split_mini/answers.jsonl
