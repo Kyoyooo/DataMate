@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.1.0"  # additive M2-04 temporal extensions
+CONTRACTS_VERSION = "1.2.0"  # additive M2-02 calendar diagnostics
 
 
 class Contract(BaseModel):
@@ -80,11 +80,19 @@ class TemporalParams(Contract):
                    for n in names)
 
 
+class CalendarDiagnostic(Contract):
+    code: str
+    row: int | None = None
+    message: str
+
+
 class SplitContext(Contract):
     rulebook_text: str  # verbatim, NFC
     rulebook_sha256: str
     temporal: TemporalParams
-    calendar_path: str | None  # lunar calendar is P2 (TASKS M2-02/M2-09)
+    calendar_path: str | None
+    calendar_ok: bool = False
+    calendar_diagnostic: CalendarDiagnostic | None = None
     warnings: list[str] = []
 
 
