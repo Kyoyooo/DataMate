@@ -27,7 +27,7 @@ from datamate.lexicon import fold
 from datamate.llm import ModelClient
 from datamate.prompts import render_parse
 
-TEMPLATE_ID = "parse.frame.v1"
+TEMPLATE_ID = "parse.frame.v2"
 
 
 def parse_question(q: Question, split: SplitContext, cat: BusinessCatalog, client: ModelClient,
