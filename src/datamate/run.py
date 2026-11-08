@@ -143,6 +143,9 @@ def run(cfg: RunConfig, client: ModelClient, data_dir: Path, result_dir: Path, *
         "template_sha256": template_sha256(),
         "split": {"rulebook_sha256": split.rulebook_sha256,
                   "temporal_params": split.temporal.model_dump(mode="json"),
+                  "calendar_ok": split.calendar_ok,
+                  "calendar_diagnostic": (split.calendar_diagnostic.model_dump(mode="json")
+                                          if split.calendar_diagnostic else None),
                   "warnings": split.warnings},
         "counts": {"questions": distinct, "written": distinct if complete else None,
                    **counts, "by_outcome": dict(outcome), "by_reason": dict(sorted(reasons.items()))},
