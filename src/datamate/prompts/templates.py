@@ -18,7 +18,7 @@ import hashlib
 
 from datamate.contracts import BusinessCatalog, Question, QuestionFrame, SplitContext, TimeWindow
 
-PARSE_SYSTEM_V2 = """You read Vietnamese business questions and return a JSON object describing them.
+PARSE_SYSTEM_V3 = """You read Vietnamese business questions and return a JSON object describing them.
 Follow the JSON schema exactly. Do not answer the question and do not compute dates.
 
 Field guide:
@@ -37,8 +37,10 @@ Field guide:
   {{"kind":"rolling","unit":"day|week|month","count":N}},
   {{"kind":"same_period_prior_year","ref":0}}, {{"kind":"same_days_previous_month","ref":0}},
   {{"kind":"all_time"}}, {{"kind":"unsupported","reason":"..."}}.
-  Use ISO dates for explicit years. For any date or range endpoint without a year, emit
-  {{"month":3,"day":5,"year":null}} as its value. Leave year inference to the resolver.
+  Use ISO dates for explicit years. For a day without a year use
+  {{"kind":"yearless_date","date":{{"month":3,"day":5,"year":null}}}}.
+  Use "yearless_date_range" if at least one endpoint lacks a year. Emit the month/day object
+  only for endpoints without a year. Leave year inference to the resolver.
   "Tháng trước" is a calendar-relative month; "N tháng gần nhất" is rolling.
   Comparison ref is the zero-based index of the source expression in time. Include the source
   separately. Use same_days_previous_month only for a source from day 1 through a day in that month.
@@ -52,7 +54,7 @@ RULEBOOK (authoritative business rules for this split):
 DATA SCHEMA:
 {schema_card}"""
 
-PARSE_USER_V2 = """as_of_date (today): {as_of_date}
+PARSE_USER_V3 = """as_of_date (today): {as_of_date}
 QUESTION: {question}"""
 
 SOLVE_SYSTEM_V1 = """You write one DuckDB SQL SELECT statement that answers a Vietnamese business question.
@@ -94,7 +96,7 @@ REPAIR_USER_V1 = """The previous answer failed: {error_code}
 Return corrected JSON with the same schema."""
 
 TEMPLATES: dict[str, tuple[str, ...]] = {
-    "parse.frame.v2": (PARSE_SYSTEM_V2, PARSE_USER_V2),
+    "parse.frame.v3": (PARSE_SYSTEM_V3, PARSE_USER_V3),
     "solve.sql.v1": (SOLVE_SYSTEM_V1, SOLVE_USER_V1),
     "repair.sql.v1": (REPAIR_USER_V1,),
 }
@@ -109,9 +111,9 @@ def template_sha256() -> dict[str, str]:
 
 def render_parse(q: Question, split: SplitContext, cat: BusinessCatalog) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": PARSE_SYSTEM_V2.format(
+        {"role": "system", "content": PARSE_SYSTEM_V3.format(
             rulebook=split.rulebook_text, schema_card=cat.schema_card)},
-        {"role": "user", "content": PARSE_USER_V2.format(
+        {"role": "user", "content": PARSE_USER_V3.format(
             as_of_date=q.as_of_date.isoformat(), question=q.question)},
     ]
 

@@ -71,13 +71,13 @@ def test_fixture_pipeline_end_to_end(tmp_path: Path) -> None:
 
     run = json.loads((out / "logs" / "run.json").read_text(encoding="utf-8"))
     assert run["dev_mode"] is True and run["model_backend"] == "scripted"
-    assert "parse.frame.v2" in run["template_sha256"]
+    assert "parse.frame.v3" in run["template_sha256"]
 
 
 def test_yearless_comparison_runs_through_parser_and_solver(cfg, split, catalog):
     text = "Từ 1/3 đến 4/3 có nhiều đơn hơn cùng kỳ tháng trước không?"
     frame = {"expected_type": "boolean", "time": [
-        {"span": "Từ 1/3 đến 4/3", "expr": {"kind": "date_range",
+        {"span": "Từ 1/3 đến 4/3", "expr": {"kind": "yearless_date_range",
          "start": {"month": 3, "day": 1, "year": None}, "end": {"month": 3, "day": 4, "year": None}}},
         {"span": "cùng kỳ tháng trước", "role": "comparison",
          "expr": {"kind": "same_days_previous_month", "ref": 0}},
@@ -88,7 +88,7 @@ def test_yearless_comparison_runs_through_parser_and_solver(cfg, split, catalog)
                   " DATE '2026-02-01' AND DATE '2026-02-04') AS value FROM ban_hang"}
     record, log = run_one(text, frame, sql, cfg=cfg, split=split, catalog=catalog)
     assert record == {"id": "t_q1", "type": "boolean", "answer": True}
-    assert log.calls[0].template_id == "parse.frame.v2"
+    assert log.calls[0].template_id == "parse.frame.v3"
     assert [(w.role, w.start.isoformat(), w.end.isoformat()) for w in log.windows] == [
         ("primary", "2026-03-01", "2026-03-04"), ("comparison", "2026-02-01", "2026-02-04"),
     ]

@@ -9,7 +9,10 @@ import pytest
 from pydantic import ValidationError
 
 from datamate.contracts import DateRange, TemporalParams, TimeRef
+from datamate.rules import load_split
 from datamate.temporal import resolve_windows
+
+from conftest import REPO
 
 GENERIC = TemporalParams()
 DATA = DateRange(start=date(2025, 1, 1), end=date(2026, 12, 31))
@@ -206,6 +209,12 @@ def test_current_month_is_clipped_to_as_of():
 
 
 def test_parameters_change_resolution():
+    # The alternate split supplies evidence for a future rule-profile extractor.
+    # Bootstrap exposes the rule text and calendar path while using generic defaults.
+    split_dir = REPO / "tests" / "fixtures" / "rulebooks" / "temporal_alt"
+    split = load_split(split_dir)
+    assert "Tuần bắt đầu Chủ nhật" in split.rulebook_text
+    assert split.temporal == GENERIC and split.calendar_path == str(split_dir / "calendar.csv")
     sunday = TemporalParams(week_start="sun", rolling_includes_as_of=False,
                             to_date_end="day_before_as_of")
     assert win({"kind": "relative_period", "unit": "week", "offset": -1, "to_date": False},
@@ -284,7 +293,7 @@ def test_spec_7_5_yearless_day_seeded_cases():
         expected = as_of
         while (expected.month, expected.day) != (sample.month, sample.day):
             expected -= ONE_DAY
-        refs = [ref(kind="date", date={"month": sample.month, "day": sample.day})]
+        refs = [ref(kind="yearless_date", date={"month": sample.month, "day": sample.day})]
         _check_generated_case(refs, as_of, GENERIC, expected, expected)
 
 
