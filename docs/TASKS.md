@@ -3,14 +3,14 @@
 | Field | Value |
 |---|---|
 | **Document** | `TASKS.md` — the single, ordered backlog (source of truth for task status) |
-| **Version** | 2.0 — rebased on the bootstrap codebase (2026-11-07) |
-| **Date** | 2026-11-07 (GMT+7) |
+| **Version** | 2.2 — review process simplified to pull-request-only merges (2026-11-08) |
+| **Date** | 2026-11-08 (GMT+7) |
 | **Inputs** | `SPEC.md` (incl. §18 corrections/deferrals), `IMPLEMENTATION_PLAN.md` (phases, process), `COMPETITION_BRIEF.md` |
 | **Status owner** | Each task owner updates their rows in their PR; the lead reviews daily |
 
 ### Conventions
 - **IDs** are stable. v1.1 IDs are kept; new tasks are appended (L-21+, M1-15+, M2-15+, M3-14+, M4-19+). The prefix is the owner: `L` lead, `M1`–`M4` members (roles in `IMPLEMENTATION_PLAN.md` §2).
-- **Rev**: required reviewer. Shared-interface changes (`contracts/`, `config.py` keys, SchemaCard format, prompt ids, reason codes, `fold()`) also need every affected consumer (`CONTRIBUTING.md`).
+- **Rev**: suggested reviewer; review is not enforced. Tell affected members about shared-interface changes (`contracts/`, `config.py` keys, SchemaCard format, prompt ids, reason codes, `fold()`) before merging (`CONTRIBUTING.md`).
 - **Env**: `CPU` = any laptop/CI, no GPU or weights; `Colab` = single Colab GPU with model weights; `Docker` = target image on an sm_120 host (E5) with `--network none`.
 - **Status**: `Done` = deliverable exists **and** its acceptance checks pass (command and result recorded in the PR); `Review` = deliverable exists, acceptance not yet observed; `Partial` = a bootstrap version is merged and usable as a stand-in, acceptance not met; `Todo`; `Dropped` (with reason).
 - **P1/P2/P3** per SPEC §1.3. P2/P3 code merges behind a config switch, default off, until its gate passes.
@@ -20,15 +20,23 @@
 
 ## Phase 1 — Shared foundation and fixture pipeline (target 11-07)
 
-What exists now (commands in `README.md`): one package, contracts 0.1.0, a synthetic fixture business, and a CPU pipeline that reads CSV → DuckDB → scripted parse → time windows → scripted SQL → DuckDB execution → decision → formatting → `submission.jsonl` + logs. 84 tests pass on CPU; `ruff` is clean.
+What exists now (commands in `README.md`): one package, contracts 1.0.0 freeze candidate, a synthetic fixture business, and a CPU pipeline that reads CSV → DuckDB → scripted parse → time windows → scripted SQL → DuckDB execution → decision → formatting → `submission.jsonl` + logs. On 2026-11-08: `pytest` 123 passed locally (2 of them need `train/` and skip in CI); `ruff` clean.
+
+**Phase 1 status (2026-11-08): not closed.** The engineering exit criterion in `IMPLEMENTATION_PLAN.md` §3 is met, but three rows wait on people or GitHub:
+
+| Row | Status | What closes it |
+|---|---|---|
+| L-02 | Review | A green `CI / cpu` run on a pull request; the L-04 pull request provides it |
+| L-04 | Review | The lead merges its pull request, which accepts DC-1…DC-7 |
+| L-19 | Todo | The lead enables pull-request-only merging on `main` in GitHub settings |
 
 | ID | Title | Owner | Rev | Deps | Package | Deliverable | Acceptance | Env | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| L-21 | Bootstrap codebase and fixture pipeline | L | M1–M4 | — | all P1 packages, `tests/`, `config/` | Package skeleton, contracts 0.1.0, fixture split `tests/fixtures/split_mini`, scripted dev path, tests, README/CONTRIBUTING | `pytest` 84 passed; `ruff check src tests` clean; fixture run exits 0 and scores PA 1.0 against hand-computed answers; production mode refuses scripted backend (exit 2, no output) | CPU | Done |
-| L-02 | CPU CI workflow | L | M4 | L-21 | `.github/workflows/ci.yml` | Workflow: install from `requirements-cpu.lock`, `ruff check`, `pytest` | First green run on GitHub on a PR into `main` (not yet run: no push performed) | CPU | Review |
-| L-04 | Contract review and freeze v1.0.0 | L | M1–M4 (each the types it produces/consumes) | L-21 | `contracts/` | Consumer-reviewed contracts; DC-1…DC-7 (SPEC §18) accepted or reverted; `CONTRACTS_VERSION = "1.0.0"` | Each member approves the PR; all tests pass; SPEC §5 and §18 updated in the same PR | CPU | Todo |
-| L-11 | Verify wire-format assumptions on training references | L | M2 | L-21 | `eval/`, SPEC §17 | Note in SPEC §17 closing V1–V5: list/table shapes, boolean, rounding, tie-code order (already observed: lists are JSON arrays, tables `{columns, rows}`, all 1,884 `number` refs integral) | `score.py` scores `train/answers.jsonl` against itself as PA 1.0; every V-item has evidence or an explicit open question to organizers | CPU | Todo |
-| L-19 | GitHub settings and CODEOWNERS | L | M4 | L-02 | `.github/CODEOWNERS` | Real GitHub handles per package (template in `CONTRIBUTING.md`), branch protection per `CONTRIBUTING.md` | A PR touching `contracts/` requests the right reviewers automatically | CPU | Todo |
+| L-21 | Bootstrap codebase and fixture pipeline | L | M1–M4 | — | all P1 packages, `tests/`, `config/` | Package skeleton, contracts 0.1.0, fixture split `tests/fixtures/split_mini`, scripted dev path, tests, README/CONTRIBUTING | `pytest` 84 passed at completion (123 after L-04/L-11); `ruff check src tests` clean; fixture run exits 0 and scores PA 1.0 against hand-computed answers; production mode refuses scripted backend (exit 2, no output) | CPU | Done |
+| L-02 | CPU CI workflow | L | M4 | L-21 | `.github/workflows/ci.yml` | Workflow: install from `requirements-cpu.lock`, `ruff check`, `pytest` | First green run on GitHub on a PR into `main`. Observed 2026-11-08: workflow badge `passing` for the push to `main` (commit `4b1c878`); no `pull_request` run exists yet | CPU | Review |
+| L-04 | Contract freeze v1.0.0 | L | M1–M4 (optional) | L-21 | `contracts/` | Contracts v1.0.0; `CONTRACTS_VERSION = "1.0.0"`; DC-1…DC-7 (SPEC §18) accepted by merging, or reverted first | The lead merges the PR; all tests pass; SPEC §5 and §18 updated in the same PR. Ready 2026-11-08: `tests/contract/test_contracts.py` passes and SPEC §5.1 and §18.3 list each change. Not merged yet | CPU | Review |
+| L-11 | Verify wire-format assumptions on training references | L | M2 | L-21 | `eval/`, SPEC §17 | Note in SPEC §17 closing V1–V5: list/table shapes, boolean, rounding, tie-code order (already observed: lists are JSON arrays, tables `{columns, rows}`, all 1,884 `number` refs integral) | `score.py` scores `train/answers.jsonl` against itself as PA 1.0; every V-item has evidence or an explicit open question to organizers. Verified 2026-11-08: `python -m datamate.eval.score --pred train/answers.jsonl --answers train/answers.jsonl` → PA 1.0000 (n=3000); `tests/integration/test_train_references.py` passes; SPEC §17 V1–V5 closed, with one question for organizers (percent tie rounding, V3) | CPU | Done |
+| L-19 | Protect `main` | L | — | — | GitHub settings | Branch protection on `main`: pull request required, no bypass (`CONTRIBUTING.md`). CODEOWNERS and required approvals **Dropped** (2026-11-08): not needed for this team | `git push origin main` is rejected, and merging a pull request works | — | Todo |
 | M4-04 | Result writer | M4 | L | L-21 | `runtime/writer.py` | Log-then-submission with fsync, duplicate rejection, `.prev-<n>` rotation | `tests/unit/test_writer_and_inputs.py` passes | CPU | Done |
 | M4-06 | `run.py` lifecycle and `config.py` | M4 | L | L-21 | `run.py`, `config.py` | Startup checks, `--dev`/`--set`, exit codes 0/1/2, run.json; production refuses dev-only or missing components | `tests/integration/test_fixture_pipeline.py` passes. SPEC's `--stub <stage>` mode is **Dropped**: replaced by the fixture + `ScriptedModelClient` path | CPU | Done |
 | M3-06 | `check_sql`, type contract, `to_typed_value` | M3 | M2 | L-21 | `solver/sql_rules.py`, `solver/typed.py` | Single-SELECT check, LIMIT-needs-ORDER-BY, result-shape and type conversion; NULL/no rows → `E_EMPTY_RESULT`; non-finite → `D_IMPLAUSIBLE` | `tests/unit/test_solver_decision.py` passes | CPU | Done |
@@ -62,7 +70,7 @@ Every row names the **stand-in now**: the code other members keep using until th
 |---|---|---|---|---|---|---|---|---|---|---|
 | M2-01 | Rulebook and calendar inspection | M2 | L | — | docs, `tests/fixtures/rulebooks/` | — | Diff of train vs public_test rulebooks (public adds rules; never hard-code either); calendar columns `date,weekday,lunar_day,lunar_month,lunar_year,lunar_leap,holiday` | Report lists every rule the P1 pipeline relies on and where it comes from at runtime | CPU | Todo |
 | M2-04 | Resolver completion | M2 | M3 | M2-03 | `temporal/` | P1 subset (see SPEC §18.2) | Year-omitted date ranges, rolling weeks/months, `same_period_prior_year`, "same days of previous month" comparison, property test | 10,000 random `(as_of, expr)` cases: `start ≤ end`, lengths match the rule | CPU | Partial |
-| M2-05 | TemporalParams from the rulebook | M2 | M3 | M2-04, M3-02 | `rules/` | generic defaults, `source="generic"` | One `rule_profile` call (`rules.temporal.v1`), span validation, generic fallback per field | Paraphrased spans rejected; empty rulebook → all generic; train and public_test rulebooks give the expected params; result in run.json | CPU (scripted) → Colab | Todo |
+| M2-05 | TemporalParams from the rulebook | M2 | M3 | M2-04, M3-02 | `rules/` | generic defaults, empty `provenance` | One `rule_profile` call (`rules.temporal.v1`), span validation, generic fallback per field | Paraphrased spans rejected; empty rulebook → all generic; train and public_test rulebooks give the expected params; result in run.json | CPU (scripted) → Colab | Todo |
 | M2-02 | Lunar calendar | M2 | M1 | M2-01 | `temporal/` | not read | `LunarCalendar` over `calendar.csv` with validation | Gap/duplicate/leap fixtures; round-trip over the file's range | CPU | Todo |
 | M2-06 | Formatter completion and shared goldens | M2 | L | L-11 | `formatting/` | all types, DC-1/DC-2 implemented | `tests/golden/` cases from Brief and rulebook §9 used by both formatter and scorer | Goldens pass for formatter **and** `eval/score.py` | CPU | Partial |
 | M2-07 | Decision gate completion | M2 | L | M1-10 | `decision/` | rules 1–8, token-containment field check | Fuzzy catalog check (SPEC §7.9), README-aware, features recorded | Each rule tested on fixture catalogs; no false "unanswerable" on the 70 training unanswerables' answerable neighbours (measured in L-14) | CPU | Partial |

@@ -31,7 +31,7 @@ When time is short, the priority order is: **compliance and validity → determi
 ### 2.1 Roles
 | Role | Person | Mission | Owns (packages) | Components |
 |---|---|---|---|---|
-| **Lead** | Team lead | Keep the pieces compatible and the measurements trustworthy; make the calls | `contracts/`, `eval/`, `tests/integration/`, CI, `CODEOWNERS` | C14; contract module; integration; decisions; submissions |
+| **Lead** | Team lead | Keep the pieces compatible and the measurements trustworthy; make the calls | `contracts/`, `eval/`, `tests/integration/`, CI | C14; contract module; integration; decisions; submissions |
 | **M1 — Data & Semantics** | Member 1 | Turn arbitrary business files into a correct, queryable catalog | `ingest/`, `catalog/`, `lexicon/`; later `entities/`, `semantics/` (P2) | C2, C3 (P2), C6 (P2) |
 | **M2 — Rules, Time & Answers** | Member 2 | Everything deterministic between the rulebook and the wire value | `rules/`, `temporal/`, `decision/`, `formatting/` | C1, C5, C9, C10 |
 | **M3 — Reasoning Engine** | Member 3 | Get correct SQL out of the model, reliably and reproducibly | `llm/client.py`, `prompts/`, `parse/`, `solver/`, `sandbox/` | C4, C7, C8, C13 client |
@@ -43,7 +43,7 @@ When time is short, the priority order is: **compliance and validity → determi
 - M2 holds all deterministic answer logic (dates in, typed answer out). This keeps rule interpretation, the gate, and formatting under one owner who can see how they interact.
 
 ### 2.2 The lead's responsibilities
-1. Contracts: 0.1.0 is merged (bootstrap); review and freeze v1.0.0 by 11-08 12:00 (TASKS L-04); approve every later change (SPEC §15).
+1. Contracts: 0.1.0 is merged (bootstrap); freeze v1.0.0 (TASKS L-04); approve every later change (SPEC §15).
 2. Integration: run the daily merge window; keep `main` green; run the walking skeleton and the first full run.
 3. Measurement: own the scorer, harness, nightly runs, determinism checks, and error analysis. No accuracy claim counts unless it comes from the harness with a run record.
 4. Decisions: DEC-3, -4, -8, -10, -11, -13, -14, P3 go/no-go, freeze (§7).
@@ -67,7 +67,7 @@ The backlog in `TASKS.md` is organized in the same seven phases. Dates are targe
 
 | Phase | Target | Content | Exit criterion |
 |---|---|---|---|
-| **1. Shared foundation and fixture pipeline** | 11-07 | Package, contracts 0.1.0, fixture business, scripted CPU pipeline, tests, CI file, docs (TASKS L-21) | **Reached 11-07:** `pytest` green on CPU; fixture run exits 0; production mode refuses dev-only components |
+| **1. Shared foundation and fixture pipeline** | 11-07 | Package, contracts 0.1.0, fixture business, scripted CPU pipeline, tests, CI file, docs (TASKS L-21) | **Engineering criterion reached 11-07:** `pytest` green on CPU; fixture run exits 0; production mode refuses dev-only components. **Phase not closed** until L-02, L-04, and L-19 finish (`TASKS.md` Phase 1) |
 | **2. Real P1 components in parallel** | 11-08 → 11-09 | Each owner replaces their stand-in with the real component behind the same contracts | Each component's acceptance tests pass on CPU; contracts v1.0.0 frozen (11-08 12:00) |
 | **3. First real end-to-end run on Colab** | 11-09 | `HttpModelClient` + real ingestion on the full training split | All 3,000 questions written with valid logs; PA per type from the harness; runtime projection; **DEC-3** |
 | **4. Evaluation and correctness fixes** | 11-10 → 11-11 | Error analysis, owner fixes, determinism check | Top error classes owned; two identical Colab runs within \|ΔPA\| ≤ 0.005 |
@@ -88,27 +88,15 @@ The backlog in `TASKS.md` is organized in the same seven phases. Dates are targe
 5. **Consumer tests.** When a member relies on a behavior of another member's output (for example, "SchemaCard lists distinct values for status columns"), the consumer writes a test in `tests/contract/consumers/`. The producer cannot merge a change that breaks it (SPEC §14.4).
 6. **Switches for anything unfinished.** P2/P3 code merges with its switch off (SPEC §1.3), so partially finished work never changes production behavior.
 
-### 4.2 Review matrix
-Every merge request needs one approval from the reviewer below (enforced by `CODEOWNERS`, L-19). The reviewer is the main **consumer** of the code, because they are best placed to spot a broken assumption.
-
-| Code owned by | Required reviewer | Reason |
-|---|---|---|
-| Lead (`contracts/`) | The member(s) whose components produce or consume the changed type | Contract changes affect them first |
-| Lead (`eval/`) | M2 (scoring rules) or M4 (harness/run records) | Independent check of the oracle |
-| M1 | M3 | Solver is the main consumer of SchemaCard and catalog |
-| M2 (`rules/`, `temporal/`) | M3 | Solver consumes windows and rule parameters |
-| M2 (`decision/`, `formatting/`) | Lead | Must agree with the scorer |
-| M3 | M2 | Gate consumes attempts and typed values |
-| M4 | M3 (serving, orchestration) or Lead (records, compliance) | Boundary partners |
-
-Review turnaround target: **4 working hours**. A review not done by then may be taken over by the lead.
+### 4.2 Review
+The only enforced rule is that changes reach `main` through a pull request (TASKS L-19). Review is optional; `CONTRIBUTING.md` names a suggested reviewer per package. Shared-interface changes are announced to the affected members before merging.
 
 ### 4.3 Daily cadence
 | Time | Event | Owner |
 |---|---|---|
 | 09:00 | Stand-up, 15 min: yesterday, today, blockers, **handoffs due today** | Lead |
 | 09:15 | Nightly report reviewed: PA, answers that changed since the previous night, new reason codes | Lead |
-| 14:00–15:00 | **Merge window**: lead merges approved requests in dependency order; CI on `main` after each merge | Lead |
+| 14:00–15:00 | **Merge window**: lead merges ready pull requests in dependency order; CI on `main` after each merge | Lead |
 | 15:00 | `main` tagged `daily-MMDD` if green | Lead |
 | 20:00 | Nightly harness run on Colab G4 from the daily tag (L-18) | Lead |
 
@@ -145,7 +133,7 @@ E5 requirements: sm_120 GPU(s), preferably 2 × RTX 5090; NVIDIA driver R570 or 
 | R1 | **One environment.** Everyone installs from the same `requirements.lock`, generated inside the chosen base image. No ad-hoc `pip install` in runs whose results are shared. | Harness environment fingerprint (L-12) |
 | R2 | **One data snapshot.** `DataMate/data/train/` and each model directory have a `SHA256SUMS` file; the harness records and checks them. | L-12, M4-02 |
 | R3 | **No local config edits.** Only `--dev --set key=value`, recorded in the run record. | `config.py` (M4-06) |
-| R4 | **Run records or it didn't happen.** Any accuracy or runtime claim in a merge request links a run record under `runs/`. | Merge-request template (L-19) |
+| R4 | **Run records or it didn't happen.** Any accuracy or runtime claim in a merge request links a run record under `runs/`. | Pull request description (`CONTRIBUTING.md`) |
 | R5 | **Compare like with like.** `compare_runs` refuses runs with different environment fingerprints, data snapshots, or model revisions unless explicitly overridden. | L-12 |
 | R6 | **Prompt changes are versioned.** A wording change creates a new template version; recorded `ModelCall` fixtures are refreshed in the same merge. | SPEC §7.13.5, M3-13 |
 | R7 | **Determinism CI.** Two runs on fixtures must be byte-identical before any merge. | L-20 |
@@ -155,7 +143,7 @@ E5 requirements: sm_120 GPU(s), preferably 2 × RTX 5090; NVIDIA driver R570 or 
 
 ## 6. Engineering workflow
 
-Branching, PR size, review rules, the definition of done, and the recommended GitHub settings are in `CONTRIBUTING.md`. In short: short-lived `<owner>/<task-id>-<slug>` branches, small PRs into `main`, the required reviewer from §4.2, and every shared-interface change reviewed by its consumers.
+Branching, PR size, the definition of done, and the GitHub setting are in `CONTRIBUTING.md`. In short: short-lived `<owner>/<task-id>-<slug>` branches, small PRs into `main`, and shared-interface changes announced to the affected members.
 
 ### 6.1 Experiment discipline
 - A feature is merged **on** only if it improves held-out PA and passes the runtime and determinism checks; otherwise it is merged **off** or dropped.

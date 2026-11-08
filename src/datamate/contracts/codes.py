@@ -9,9 +9,11 @@ D_ANSWER = "D_ANSWER"
 D_UNANSWERABLE_CONFIRMED = "D_UNANSWERABLE_CONFIRMED"  # parser said missing field; catalog agrees
 D_UNANSWERABLE_OUT_OF_RANGE = "D_UNANSWERABLE_OUT_OF_RANGE"  # a window has zero data coverage
 D_IMPLAUSIBLE = "D_IMPLAUSIBLE"  # NaN / Infinity / absurd percent
+D_UNCLEAR = "D_UNCLEAR"  # parser marked the question as unclear
 
 # Inputs (runtime/)
 E_INPUT_BUSINESS_MISSING = "E_INPUT_BUSINESS_MISSING"
+E_INPUT_INVALID = "E_INPUT_INVALID"  # id present, other fields unusable
 E_BUSINESS_SETUP = "E_BUSINESS_SETUP"  # catalog/
 
 # Parse and time (parse/, temporal/)
@@ -35,3 +37,10 @@ E_NO_SUCCESS = "E_NO_SUCCESS"
 # Runtime (runtime/)
 E_INTERNAL = "E_INTERNAL"
 E_DUPLICATE_WRITE = "E_DUPLICATE_WRITE"
+
+# Warnings: recorded, never decide an outcome by themselves (SPEC §10.1).
+# A warning string is "<CODE>" or "<CODE> <detail>".
+W_RULEBOOK_MISSING = "W_RULEBOOK_MISSING"  # rules/
+W_CALENDAR_MISSING = "W_CALENDAR_MISSING"  # rules/
+W_UNSUPPORTED_FILE = "W_UNSUPPORTED_FILE"  # catalog/
+W_EMPTY_FILE = "W_EMPTY_FILE"  # catalog/

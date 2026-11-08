@@ -74,7 +74,7 @@ def load_questions(path: Path) -> tuple[list[Question], list[tuple[str, str, str
                 id=qid, business_id=obj["business_id"], question=nfc(obj["question"]),
                 as_of_date=date.fromisoformat(obj["as_of_date"]), line_no=line_no))
         except (KeyError, TypeError, ValueError, ValidationError):
-            invalid.append((qid, str(obj.get("business_id", "")), "E_INPUT_INVALID"))
+            invalid.append((qid, str(obj.get("business_id", "")), codes.E_INPUT_INVALID))
     return valid, invalid, dict(counts)
 
 

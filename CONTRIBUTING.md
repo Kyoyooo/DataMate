@@ -2,9 +2,9 @@
 
 ## Ownership
 
-Ownership is by package. The owner merges changes to their package after the required reviewer approves.
+Ownership is by package. The owner is responsible for changes to their package. Review is encouraged but not required; the suggested reviewer is the person most affected by the change.
 
-| Path (under `src/datamate/` unless noted) | Owner | Required reviewer |
+| Path (under `src/datamate/` unless noted) | Owner | Suggested reviewer |
 |---|---|---|
 | `contracts/`, `eval/`, `tests/integration/`, `.github/` | Lead | Every member whose component produces or consumes the changed type (contracts); M2 for scoring; M4 for CI |
 | `ingest/`, `catalog/`, `lexicon/` (later `entities/`, `semantics/`) | M1 | M3 |
@@ -14,9 +14,9 @@ Ownership is by package. The owner merges changes to their package after the req
 | `run.py`, `config.py`, `runtime/`, `llm/__init__.py`, `llm/replicas.py`, Docker, `tools/` | M4 | M3 (serving, orchestration) or Lead (records, compliance) |
 | `tests/unit/test_<area>.py`, `tests/fixtures/` | owner of the area | as above |
 
-### Shared interfaces (consumer review required)
+### Shared interfaces (tell the people affected)
 
-A change to any of these needs approval from **every affected consumer**, not only the package reviewer, and a note in the PR description:
+A change to any of these can break other members' code. Note it in the PR description and tell the affected members before merging:
 
 - `contracts/` types and `CONTRACTS_VERSION` (SPEC §15: patch / minor / major)
 - `config.py` keys (add with a default; never rename silently)
@@ -38,7 +38,7 @@ A change to any of these needs approval from **every affected consumer**, not on
    .venv/bin/python -m pytest
    ```
 5. PR description: task ID; what changed; **commands run and their actual output** (tests, fixture run, harness PA if accuracy-affecting); shared-interface impact; what is still missing.
-6. Merge after the required approval and green CI. Rebase on `main` rather than merging `main` into your branch.
+6. Merge through the pull request once CI is green. Rebase on `main` rather than merging `main` into your branch.
 
 ### Definition of done
 - The task's deliverable exists and its acceptance criteria in `docs/TASKS.md` pass, with the command and result in the PR.
@@ -53,15 +53,11 @@ A change to any of these needs approval from **every affected consumer**, not on
 - Log only what actually happened: real model output, real executed SQL, real results.
 - Do not strip Vietnamese diacritics from answers or data values; `fold()` is for matching keys only.
 
-## Recommended GitHub settings (for the lead to apply; not applied by the bootstrap)
+## GitHub setting
 
-- Default branch `main`; **branch protection** on `main`: require a pull request, 1 approval, review from Code Owners, status check `CI / cpu` passing, branches up to date before merge, linear history; disallow force pushes and deletion.
-- **Squash merge** only; delete head branches automatically.
-- Add `.github/CODEOWNERS` with real handles once known (TASKS L-19), e.g.:
-  ```
-  /src/datamate/contracts/   @lead-handle
-  /src/datamate/ingest/      @m1-handle @m3-handle
-  /src/datamate/temporal/    @m2-handle @m3-handle
-  ```
-- Keep the repository **private**; the public-test data must not be redistributed and is git-ignored.
-- Actions: allow GitHub-hosted runners for CI; no secrets are needed for the CPU workflow.
+The only rule enforced on GitHub is that changes reach `main` through a pull request. In Settings → Branches, add a rule for `main` and enable:
+
+- **Require a pull request before merging** (leave "Require approvals" unchecked)
+- **Do not allow bypassing the above settings**, so the rule also applies to admins
+
+Everything else stays at its default: no CODEOWNERS, required approvals, or required status checks. CI still runs on every pull request; check it before merging. (On a private repository, branch protection needs a paid GitHub plan.)
