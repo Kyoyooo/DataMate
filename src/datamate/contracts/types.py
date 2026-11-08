@@ -70,11 +70,12 @@ class TemporalParams(Contract):
     to_date_end: Literal["as_of", "day_before_as_of"] = "as_of"
     rolling_includes_as_of: bool = True
     prior_period_full: bool = True
+    same_period_alignment: Literal["calendar_dates", "elapsed_days"] = "calendar_dates"
     provenance: dict[str, ParamProvenance] = {}
 
     def uses_generic(self) -> bool:
         """True if any parameter did not come from the mounted rulebook."""
-        names = ("week_start", "to_date_end", "rolling_includes_as_of", "prior_period_full")
+        names = type(self).model_fields.keys() - {"provenance"}
         return any(n not in self.provenance or self.provenance[n].source == "generic"
                    for n in names)
 
@@ -202,6 +203,16 @@ class RollingExpr(Contract):
     count: int = Field(ge=1)
 
 
+class SamePeriodPriorYearExpr(Contract):
+    kind: Literal["same_period_prior_year"] = "same_period_prior_year"
+    ref: int = Field(ge=0)
+
+
+class SameDaysPreviousMonthExpr(Contract):
+    kind: Literal["same_days_previous_month"] = "same_days_previous_month"
+    ref: int = Field(ge=0)
+
+
 class AllTimeExpr(Contract):
     kind: Literal["all_time"] = "all_time"
 
@@ -219,6 +230,8 @@ TimeExpr = Annotated[
     | CalendarPeriodExpr
     | RelativePeriodExpr
     | RollingExpr
+    | SamePeriodPriorYearExpr
+    | SameDaysPreviousMonthExpr
     | AllTimeExpr
     | UnsupportedExpr,
     Field(discriminator="kind"),

@@ -6,7 +6,8 @@ inclusive date windows. No I/O, no model calls.
 Supported now (all documented in tests/unit/test_temporal.py):
   date and date_range (full or yearless dates), calendar_period (month/quarter/year, optional
   year), relative_period (day/week/month/quarter/year, offset ≤ 0, to_date),
-  rolling (days/weeks/months), all_time, unsupported → E_TIME_UNSUPPORTED.
+  rolling (days/weeks/months), prior-year and previous-month comparisons,
+  all_time, unsupported → E_TIME_UNSUPPORTED.
 
 Conventions:
 - Windows never extend past ``as_of_date``: records dated after "today" are
@@ -16,8 +17,7 @@ Conventions:
   ``as_of_date``) / window days. 0 means "no data for this period", which the
   decision step treats differently from a computed zero.
 
-Deferred (TASKS M2-04, M2-09): "same days of previous month" comparisons, same period last year, lunar
-holidays (Tết), sub-day shifts (ca sáng / ca chiều).
+Deferred: lunar holidays (M2-09), sub-day shifts (M2-15).
 """
 
 from __future__ import annotations
@@ -34,6 +34,8 @@ from datamate.contracts import (
     MonthDay,
     RelativePeriodExpr,
     RollingExpr,
+    SameDaysPreviousMonthExpr,
+    SamePeriodPriorYearExpr,
     TemporalParams,
     TimeRef,
     TimeWindow,
@@ -176,17 +178,45 @@ def coverage(start: date, end: date, data_range: DateRange | None, as_of: date) 
     return max(0, (hi - lo).days + 1) / days
 
 
+def _comparison_window(expr: SamePeriodPriorYearExpr | SameDaysPreviousMonthExpr,
+                       base: TimeWindow, params: TemporalParams) -> tuple[date, date, str]:
+    if isinstance(expr, SamePeriodPriorYearExpr):
+        end = _shift_months(base.end, -12)
+        if params.same_period_alignment == "elapsed_days":
+            start = end - (base.end - base.start)
+        else:
+            start = _shift_months(base.start, -12)
+        return start, end, base.granularity
+    if base.start.day != 1 or (base.start.year, base.start.month) != (base.end.year, base.end.month):
+        raise TimeResolutionError("previous-month comparison needs a window from the first of a month")
+    end = _shift_months(base.end, -1)
+    return end.replace(day=1), end, "month"
+
+
 def resolve_windows(time_refs: list[TimeRef], as_of: date, params: TemporalParams,
                     data_range: DateRange | None) -> tuple[list[TimeWindow], str | None]:
     """Return (windows, error_code). ``error_code`` is E_TIME_UNSUPPORTED or None."""
-    windows: list[TimeWindow] = []
-    for i, ref in enumerate(time_refs):
-        try:
+    resolved: dict[int, TimeWindow | None] = {}
+    visiting: set[int] = set()
+
+    def window_at(i: int) -> TimeWindow | None:
+        if i in resolved:
+            return resolved[i]
+        if i in visiting or not 0 <= i < len(time_refs):
+            raise TimeResolutionError("invalid or circular comparison reference")
+        visiting.add(i)
+        ref = time_refs[i]
+        if isinstance(ref.expr, (SamePeriodPriorYearExpr, SameDaysPreviousMonthExpr)):
+            base = window_at(ref.expr.ref)
+            if base is None:
+                raise TimeResolutionError("comparison source has no resolved window")
+            raw = _comparison_window(ref.expr, base, params)
+        else:
             raw = _raw_window(ref, as_of, params, data_range)
-        except (ValueError, OverflowError):  # Invalid or unrepresentable calendar dates.
-            return [], codes.E_TIME_UNSUPPORTED
+        visiting.remove(i)
         if raw is None:
-            continue
+            resolved[i] = None
+            return None
         start, end, gran = raw
         flags: list[str] = []
         if start > as_of:
@@ -199,6 +229,17 @@ def resolve_windows(time_refs: list[TimeRef], as_of: date, params: TemporalParam
             cov = coverage(start, end, data_range, as_of)
         if params.uses_generic():
             flags.append("F_TEMPORAL_GENERIC")
-        windows.append(TimeWindow(ref_index=i, role=ref.role, start=start, end=end,
-                                  granularity=gran, coverage_ratio=cov, flags=flags))
+        window = TimeWindow(ref_index=i, role=ref.role, start=start, end=end,
+                            granularity=gran, coverage_ratio=cov, flags=flags)
+        resolved[i] = window
+        return window
+
+    windows: list[TimeWindow] = []
+    try:
+        for i in range(len(time_refs)):
+            window = window_at(i)
+            if window is not None:
+                windows.append(window)
+    except (ValueError, OverflowError):  # Invalid or unrepresentable calendar dates.
+        return [], codes.E_TIME_UNSUPPORTED
     return windows, None

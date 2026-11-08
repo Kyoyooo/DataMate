@@ -135,6 +135,66 @@ def test_spec_7_5_yearless_expression_without_valid_interval_is_unsupported(expr
     )
 
 
+@pytest.mark.parametrize("alignment, expected_start", [
+    ("calendar_dates", date(2023, 2, 1)), ("elapsed_days", date(2023, 1, 31)),
+])
+def test_spec_7_5_prior_year_alignment(alignment, expected_start):
+    refs = [ref(kind="date_range", start="2024-02-01", end="2024-02-29"),
+            TimeRef(span="cùng kỳ năm ngoái", role="comparison",
+                    expr={"kind": "same_period_prior_year", "ref": 0})]
+    params = TemporalParams(same_period_alignment=alignment)
+    windows, err = resolve_windows(refs, date(2024, 3, 1), params, None)
+    assert err is None
+    assert (windows[1].start, windows[1].end) == (expected_start, date(2023, 2, 28))
+    assert (windows[1].role, windows[1].ref_index, windows[1].coverage_ratio) == ("comparison", 1, None)
+
+
+@pytest.mark.parametrize("as_of, expected", [
+    (date(2026, 1, 10), (date(2025, 12, 1), date(2025, 12, 10))),
+    (date(2026, 3, 4), (date(2026, 2, 1), date(2026, 2, 4))),
+    (date(2026, 3, 31), (date(2026, 2, 1), date(2026, 2, 28))),
+    (date(2024, 3, 31), (date(2024, 2, 1), date(2024, 2, 29))),
+])
+def test_spec_7_5_same_days_previous_month_uses_clipped_source(as_of, expected):
+    refs = [TimeRef(span="cùng kỳ tháng trước", role="baseline",
+                    expr={"kind": "same_days_previous_month", "ref": 1}),
+            ref(kind="calendar_period", unit="month", index=as_of.month, year=as_of.year)]
+    windows, err = resolve_windows(refs, as_of, GENERIC, None)
+    assert err is None
+    assert (windows[0].start, windows[0].end) == expected
+    assert [(w.ref_index, w.role) for w in windows] == [(0, "baseline"), (1, "primary")]
+
+
+@pytest.mark.parametrize("data_start, expected_coverage", [
+    (date(2026, 1, 4), [0.25, 0.0]),
+    (date(2025, 12, 3), [1.0, 0.5]),
+    (date(2025, 12, 1), [1.0, 1.0]),
+])
+def test_spec_7_5_comparison_coverage_does_not_change_windows(data_start, expected_coverage):
+    refs = [ref(kind="relative_period", unit="month", offset=0),
+            ref(kind="same_days_previous_month", ref=0)]
+    data = DateRange(start=data_start, end=date(2026, 1, 7))
+    windows, err = resolve_windows(refs, date(2026, 1, 4), GENERIC, data)
+    assert err is None
+    assert (windows[1].start, windows[1].end) == (date(2025, 12, 1), date(2025, 12, 4))
+    assert [w.coverage_ratio for w in windows] == expected_coverage
+
+
+@pytest.mark.parametrize("refs", [
+    [ref(kind="same_period_prior_year", ref=3)],
+    [ref(kind="same_period_prior_year", ref=0)],
+    [ref(kind="same_period_prior_year", ref=1), ref(kind="same_period_prior_year", ref=0)],
+    [ref(kind="all_time"), ref(kind="same_period_prior_year", ref=0)],
+    [ref(kind="date_range", start="2025-12-31", end="2026-01-04"),
+     ref(kind="same_days_previous_month", ref=0)],
+    [ref(kind="date_range", start="2026-01-02", end="2026-01-04"),
+     ref(kind="same_days_previous_month", ref=0)],
+    [ref(kind="date", date="0001-01-01"), ref(kind="same_period_prior_year", ref=0)],
+])
+def test_spec_7_5_unresolvable_comparison_fails_whole_question(refs):
+    assert resolve_windows(refs, date(2026, 1, 4), GENERIC, None) == ([], "E_TIME_UNSUPPORTED")
+
+
 def test_current_month_is_clipped_to_as_of():
     windows, _ = resolve_windows([ref(kind="calendar_period", unit="month", year=2026, index=3)],
                                  date(2026, 3, 4), GENERIC, DATA)
