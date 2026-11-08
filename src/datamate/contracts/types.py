@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.0.0"  # P1 surface of SPEC §5; deviations listed in SPEC §18.3
+CONTRACTS_VERSION = "1.1.0"  # additive M2-04 temporal extensions
 
 
 class Contract(BaseModel):
@@ -70,11 +70,12 @@ class TemporalParams(Contract):
     to_date_end: Literal["as_of", "day_before_as_of"] = "as_of"
     rolling_includes_as_of: bool = True
     prior_period_full: bool = True
+    same_period_alignment: Literal["calendar_dates", "elapsed_days"] = "calendar_dates"
     provenance: dict[str, ParamProvenance] = {}
 
     def uses_generic(self) -> bool:
         """True if any parameter did not come from the mounted rulebook."""
-        names = ("week_start", "to_date_end", "rolling_includes_as_of", "prior_period_full")
+        names = type(self).model_fields.keys() - {"provenance"}
         return any(n not in self.provenance or self.provenance[n].source == "generic"
                    for n in names)
 
@@ -135,6 +136,19 @@ class BusinessCatalog(Contract):
 # --------------------------------------------------------------------------- question level
 
 
+class MonthDay(Contract):
+    """A calendar date whose year was omitted from the question."""
+
+    month: int = Field(ge=1, le=12)
+    day: int = Field(ge=1, le=31)
+    year: None = None
+
+    @model_validator(mode="after")
+    def _valid_month_day(self) -> MonthDay:
+        date(2000, self.month, self.day)  # Leap year: allow February 29.
+        return self
+
+
 class DateExpr(Contract):
     kind: Literal["date"] = "date"
     date: date
@@ -144,6 +158,23 @@ class DateRangeExpr(Contract):
     kind: Literal["date_range"] = "date_range"
     start: date
     end: date
+
+
+class YearlessDateExpr(Contract):
+    kind: Literal["yearless_date"] = "yearless_date"
+    date: MonthDay
+
+
+class YearlessDateRangeExpr(Contract):
+    kind: Literal["yearless_date_range"] = "yearless_date_range"
+    start: date | MonthDay
+    end: date | MonthDay
+
+    @model_validator(mode="after")
+    def _has_yearless_endpoint(self) -> YearlessDateRangeExpr:
+        if isinstance(self.start, date) and isinstance(self.end, date):
+            raise ValueError("yearless_date_range requires at least one yearless endpoint")
+        return self
 
 
 class CalendarPeriodExpr(Contract):
@@ -165,11 +196,21 @@ class RelativePeriodExpr(Contract):
 
 
 class RollingExpr(Contract):
-    """'7 ngày qua', 'N ngày gần nhất'."""
+    """Consecutive days, weeks or months ending on or just before as_of_date."""
 
     kind: Literal["rolling"] = "rolling"
-    unit: Literal["day"]  # week/month rolling windows: TASKS M2-04
+    unit: Literal["day", "week", "month"]
     count: int = Field(ge=1)
+
+
+class SamePeriodPriorYearExpr(Contract):
+    kind: Literal["same_period_prior_year"] = "same_period_prior_year"
+    ref: int = Field(ge=0)
+
+
+class SameDaysPreviousMonthExpr(Contract):
+    kind: Literal["same_days_previous_month"] = "same_days_previous_month"
+    ref: int = Field(ge=0)
 
 
 class AllTimeExpr(Contract):
@@ -184,9 +225,13 @@ class UnsupportedExpr(Contract):
 TimeExpr = Annotated[
     DateExpr
     | DateRangeExpr
+    | YearlessDateExpr
+    | YearlessDateRangeExpr
     | CalendarPeriodExpr
     | RelativePeriodExpr
     | RollingExpr
+    | SamePeriodPriorYearExpr
+    | SameDaysPreviousMonthExpr
     | AllTimeExpr
     | UnsupportedExpr,
     Field(discriminator="kind"),

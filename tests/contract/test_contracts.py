@@ -25,7 +25,7 @@ SRC = Path(contracts.__file__).resolve().parents[1]
 
 
 def test_version_is_the_frozen_major():
-    assert CONTRACTS_VERSION == "1.0.0"
+    assert re.fullmatch(r"1\.\d+\.\d+", CONTRACTS_VERSION)
 
 
 def test_frame_round_trips_through_json_with_each_time_kind():
@@ -71,6 +71,8 @@ def test_temporal_provenance_is_per_field():
     partly = {n: ParamProvenance(source="rulebook", span="x") for n in names}
     assert TemporalParams(provenance=partly).uses_generic()  # prior_period_full still generic
     full = {**partly, "prior_period_full": ParamProvenance(source="rulebook", span="y")}
+    assert TemporalParams(provenance=full).uses_generic()  # same_period_alignment still generic
+    full["same_period_alignment"] = ParamProvenance(source="rulebook", span="z")
     assert not TemporalParams(provenance=full).uses_generic()
 
 
