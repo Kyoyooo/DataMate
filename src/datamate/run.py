@@ -87,9 +87,10 @@ def _abstain_log(qid: str, business_id: str, reason: str) -> tuple[SubmissionRec
 
 
 def run(cfg: RunConfig, client: ModelClient, data_dir: Path, result_dir: Path, *, dev: bool,
-        overrides: list[str]) -> int:
+        overrides: list[str], extract_temporal: bool = False) -> int:
     t0 = time.monotonic()
-    split = load_split(data_dir)
+    split = load_split(data_dir, client=client if extract_temporal else None,
+                       max_tokens=cfg.model.max_tokens.get("rule_profile"))
     questions, invalid, counts = load_questions(data_dir / "questions.jsonl")
     work_dir = Path(cfg.work_dir)
     errors: list[str] = []
@@ -143,6 +144,8 @@ def run(cfg: RunConfig, client: ModelClient, data_dir: Path, result_dir: Path, *
         "template_sha256": template_sha256(),
         "split": {"rulebook_sha256": split.rulebook_sha256,
                   "temporal_params": split.temporal.model_dump(mode="json"),
+                  "temporal_diagnostics": split.temporal_diagnostics,
+                  "calls": [call.model_dump(mode="json") for call in split.rule_profile_calls],
                   "calendar_ok": split.calendar_ok,
                   "calendar_diagnostic": (split.calendar_diagnostic.model_dump(mode="json")
                                           if split.calendar_diagnostic else None),
