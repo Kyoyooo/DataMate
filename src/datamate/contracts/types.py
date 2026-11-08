@@ -31,7 +31,7 @@ AnswerType = Literal["number", "percent", "string", "date", "boolean", "list", "
 DecisionKind = Literal["answer", "unanswerable", "abstain"]
 DateGranularity = Literal["day", "month"]
 Granularity = Literal["day", "week", "month", "quarter", "year", "range"]
-Stage = Literal["parse", "solve", "repair"]
+Stage = Literal["rule_profile", "parse", "solve", "repair"]
 # How a number is rounded on the wire (design correction DC-1, see SPEC §18).
 NumericKind = Literal["money", "count", "measure"]
 # Ranked list (sorted by the formatter) vs. list in the order the question gives (DC-2).
@@ -94,6 +94,8 @@ class SplitContext(Contract):
     calendar_path: str | None
     calendar_ok: bool = False
     calendar_diagnostic: CalendarDiagnostic | None = None
+    rule_profile_calls: list[ModelCall] = Field(default_factory=list)
+    temporal_diagnostics: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = []
 
 

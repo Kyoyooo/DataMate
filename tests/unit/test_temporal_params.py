@@ -5,6 +5,8 @@ import json
 import pytest
 
 from datamate.contracts import TemporalParams
+from datamate.llm import ScriptedModelClient
+from datamate.rules import load_split
 from datamate.rules.temporal_params import temporal_candidate_schema, validate_temporal_params
 
 from conftest import REPO, SPLIT
@@ -89,6 +91,7 @@ def test_invalid_claim_falls_back_without_losing_independent_fields(bad, reason)
 @pytest.mark.parametrize("rulebook, reason", [
     (f"{WEEK}. Tuần bắt đầu thứ Hai.", "contradictory_rulebook"),
     (f"{WEEK}. Tuần không bắt đầu Chủ nhật.", "contradictory_rulebook"),
+    (f"{WEEK}. Tuần bắt đầu thứ Ba.", "contradictory_rulebook"),
     (f"Nếu dùng lịch khác, {WEEK}.", "insufficient_evidence"),
     (f"Ví dụ: {WEEK}.", "insufficient_evidence"),
     (f"## Ví dụ\n{WEEK}.", "insufficient_evidence"),
@@ -105,6 +108,13 @@ def test_normalized_whitespace_supports_a_wrapped_rule():
     rulebook = "- Tuần bắt đầu\n  Chủ nhật. Tuần không bắt đầu thứ Hai."
     params, _ = validate_temporal_params(rulebook, json.dumps({"week_start": claim("sun", WEEK)}))
     assert params.week_start == "sun"
+
+
+def test_rolling_month_exclusion_requires_temporal_evidence():
+    rule = "N tháng gần nhất không tính hôm nay"
+    params, _ = validate_temporal_params(rule, json.dumps({"rolling_includes_as_of": claim(False, rule)}))
+    assert params.rolling_includes_as_of is False
+    assert params.provenance["rolling_includes_as_of"].span == rule
 
 
 def test_unsupported_prior_period_policy_and_strict_boolean():
@@ -128,3 +138,24 @@ def test_duplicate_claim_is_invalidated_without_affecting_other_fields():
     params, diagnostics = validate_temporal_params(f"{WEEK}. {ROLLING}.", content)
     assert diagnostics["week_start"] == "invalid_candidate"
     assert params.rolling_includes_as_of is False
+
+
+@pytest.mark.parametrize("contents", [None, "", " \n\t"])
+def test_empty_rulebook_skips_model_call(tmp_path, monkeypatch, contents):
+    if contents is not None:
+        (tmp_path / "rulebook.md").write_text(contents, encoding="utf-8-sig")
+    client = ScriptedModelClient([])
+    monkeypatch.setattr(client, "complete", lambda **_: pytest.fail("empty rulebook made a model call"))
+    split = load_split(tmp_path, client=client)
+    assert split.temporal == TemporalParams()
+    assert split.temporal_diagnostics == {"profile": "empty_rulebook"}
+    assert split.rule_profile_calls == []
+
+
+def test_failed_profile_call_keeps_defaults_and_retains_error(tmp_path):
+    (tmp_path / "rulebook.md").write_text(WEEK, encoding="utf-8")
+    split = load_split(tmp_path, client=ScriptedModelClient([]))
+    assert split.temporal == TemporalParams()
+    assert split.temporal_diagnostics == {"profile": "model_error"}
+    assert len(split.rule_profile_calls) == 1
+    assert split.rule_profile_calls[0].error == "E_SCRIPT_MISS"

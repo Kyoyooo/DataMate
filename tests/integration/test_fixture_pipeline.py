@@ -9,12 +9,14 @@ nothing about competition accuracy.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
 from datamate.eval.score import score_files
-from datamate.run import main
+from datamate.llm import ScriptedModelClient
+from datamate.run import main, run
 
 from conftest import REPO, SCRIPT, SPLIT, run_one
 
@@ -72,6 +74,53 @@ def test_fixture_pipeline_end_to_end(tmp_path: Path) -> None:
     run = json.loads((out / "logs" / "run.json").read_text(encoding="utf-8"))
     assert run["dev_mode"] is True and run["model_backend"] == "scripted"
     assert "parse.frame.v3" in run["template_sha256"]
+    assert run["split"]["calendar_ok"] is True and run["split"]["calls"] == []
+
+
+def test_runtime_temporal_profile_is_opt_in_and_logged_once(tmp_path, cfg, monkeypatch):
+    data_dir = tmp_path / "split"
+    shutil.copytree(SPLIT, data_dir)
+    week_rule = "Tuần bắt đầu Chủ nhật"
+    end_rule = "Tuần này và tháng này tính đến hết ngày hôm qua"
+    rulebook = f"{week_rule}. {end_rule}.\n"
+    (data_dir / "rulebook.md").write_bytes(rulebook.encode("utf-8"))
+    (data_dir / "calendar.csv").write_text("date\n", encoding="utf-8")
+    content = json.dumps({
+        "week_start": {"value": "sun", "span": week_rule},
+        "to_date_end": {"value": "as_of", "span": end_rule},  # value contradicts the quote
+    }, ensure_ascii=False)
+    script = _jsonl(SCRIPT)
+    script.append({"stage": "rule_profile", "question": week_rule, "content": content})
+    client = ScriptedModelClient(script)
+    complete = client.complete
+    profile_requests = []
+
+    def capture(**request):
+        if request["stage"] == "rule_profile":
+            profile_requests.append(request)
+        return complete(**request)
+
+    monkeypatch.setattr(client, "complete", capture)
+    out = tmp_path / "result"
+    assert run(cfg, client, data_dir, out, dev=True, overrides=[], extract_temporal=True) == 0
+    assert len(profile_requests) == 1
+    request = profile_requests[0]
+    assert request["messages"][-1] == {"role": "user", "content": rulebook}
+    assert request["template_id"] == "rules.temporal.v1" and request["json_schema"]["additionalProperties"] is False
+
+    record = json.loads((out / "logs" / "run.json").read_text(encoding="utf-8"))
+    split = record["split"]
+    assert "rules.temporal.v1" in record["template_sha256"]
+    assert len(split["calls"]) == 1 and split["calls"][0]["content"] == content
+    assert split["temporal_params"]["provenance"]["week_start"] == {"source": "rulebook", "span": week_rule}
+    assert "to_date_end" not in split["temporal_params"]["provenance"]
+    assert split["temporal_params"]["to_date_end"] == "as_of"
+    assert split["temporal_diagnostics"]["to_date_end"] == "contradictory_rulebook"
+    assert split["calendar_ok"] is False and split["calendar_diagnostic"]["code"] == "missing_columns"
+    logs = {row["id"]: row for row in _jsonl(out / "logs" / "questions.jsonl")}
+    last_week = logs["fx_q01"]["windows"][0]
+    assert (last_week["start"], last_week["end"]) == ("2026-02-22", "2026-02-28")
+    assert len(_jsonl(out / "submission.jsonl")) == 13
 
 
 def test_yearless_comparison_runs_through_parser_and_solver(cfg, split, catalog):
