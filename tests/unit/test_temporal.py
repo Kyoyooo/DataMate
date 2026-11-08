@@ -57,6 +57,28 @@ def test_resolution_table(expr, as_of, expected):
     assert win(expr, as_of) == expected
 
 
+@pytest.mark.parametrize("unit, count, as_of, include_today, expected", [
+    ("day", 1, "2026-01-01", False, ("2025-12-31", "2025-12-31")),
+    ("week", 2, "2026-01-02", True, ("2025-12-20", "2026-01-02")),
+    ("week", 1, "2026-03-04", False, ("2026-02-25", "2026-03-03")),
+    ("month", 1, "2026-01-31", True, ("2026-01-01", "2026-01-31")),
+    ("month", 2, "2026-01-31", True, ("2025-12-01", "2026-01-31")),
+    ("month", 1, "2024-03-31", True, ("2024-03-01", "2024-03-31")),
+    ("month", 1, "2025-03-31", True, ("2025-03-01", "2025-03-31")),
+    ("month", 1, "2024-02-29", True, ("2024-01-30", "2024-02-29")),
+    ("month", 1, "2025-02-28", True, ("2025-01-29", "2025-02-28")),
+    ("month", 1, "2026-03-01", False, ("2026-01-29", "2026-02-28")),
+])
+def test_spec_7_5_rolling_windows(unit, count, as_of, include_today, expected):
+    params = TemporalParams(rolling_includes_as_of=include_today)
+    assert win({"kind": "rolling", "unit": unit, "count": count}, as_of, params) == expected
+
+
+def test_spec_7_5_rolling_before_minimum_date_is_unsupported():
+    refs = [ref(kind="rolling", unit="month", count=1)]
+    assert resolve_windows(refs, date.min, GENERIC, None) == ([], "E_TIME_UNSUPPORTED")
+
+
 def test_current_month_is_clipped_to_as_of():
     windows, _ = resolve_windows([ref(kind="calendar_period", unit="month", year=2026, index=3)],
                                  date(2026, 3, 4), GENERIC, DATA)

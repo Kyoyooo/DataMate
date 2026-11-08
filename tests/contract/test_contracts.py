@@ -25,7 +25,7 @@ SRC = Path(contracts.__file__).resolve().parents[1]
 
 
 def test_version_is_the_frozen_major():
-    assert CONTRACTS_VERSION == "1.0.0"
+    assert re.fullmatch(r"1\.\d+\.\d+", CONTRACTS_VERSION)
 
 
 def test_frame_round_trips_through_json_with_each_time_kind():

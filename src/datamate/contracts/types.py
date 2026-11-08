@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.0.0"  # P1 surface of SPEC §5; deviations listed in SPEC §18.3
+CONTRACTS_VERSION = "1.1.0"  # additive M2-04 temporal extensions
 
 
 class Contract(BaseModel):
@@ -165,10 +165,10 @@ class RelativePeriodExpr(Contract):
 
 
 class RollingExpr(Contract):
-    """'7 ngày qua', 'N ngày gần nhất'."""
+    """Consecutive days, weeks or months ending on or just before as_of_date."""
 
     kind: Literal["rolling"] = "rolling"
-    unit: Literal["day"]  # week/month rolling windows: TASKS M2-04
+    unit: Literal["day", "week", "month"]
     count: int = Field(ge=1)
 
 

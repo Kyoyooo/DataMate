@@ -6,7 +6,7 @@ inclusive date windows. No I/O, no model calls.
 Supported now (all documented in tests/unit/test_temporal.py):
   date, date_range (full dates), calendar_period (month/quarter/year, optional
   year), relative_period (day/week/month/quarter/year, offset ≤ 0, to_date),
-  rolling (N days), all_time, unsupported → E_TIME_UNSUPPORTED.
+  rolling (days/weeks/months), all_time, unsupported → E_TIME_UNSUPPORTED.
 
 Conventions:
 - Windows never extend past ``as_of_date``: records dated after "today" are
@@ -16,7 +16,7 @@ Conventions:
   ``as_of_date``) / window days. 0 means "no data for this period", which the
   decision step treats differently from a computed zero.
 
-Deferred (TASKS M2-04, M2-09): year-omitted date ranges, rolling weeks/months,
+Deferred (TASKS M2-04, M2-09): year-omitted date ranges,
 "same days of previous month" comparisons, same period last year, lunar
 holidays (Tết), sub-day shifts (ca sáng / ca chiều).
 """
@@ -55,6 +55,11 @@ def week_start(d: date, start: str) -> date:
 def add_months(year: int, month: int, delta: int) -> tuple[int, int]:
     idx = year * 12 + (month - 1) + delta
     return idx // 12, idx % 12 + 1
+
+
+def _shift_months(d: date, delta: int) -> date:
+    year, month = add_months(d.year, d.month, delta)
+    return date(year, month, min(d.day, monthrange(year, month)[1]))
 
 
 def month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -129,7 +134,12 @@ def _raw_window(ref: TimeRef, as_of: date, params: TemporalParams,
         return s, t, e.unit
     if isinstance(e, RollingExpr):
         end = as_of if params.rolling_includes_as_of else as_of - timedelta(days=1)
-        return end - timedelta(days=e.count - 1), end, "range"
+        if e.unit == "month":
+            start = _shift_months(end, -e.count) + timedelta(days=1)
+        else:
+            days = e.count * (7 if e.unit == "week" else 1)
+            start = end - timedelta(days=days - 1)
+        return start, end, "range"
     if isinstance(e, AllTimeExpr):
         if data_range is None:
             return None
@@ -155,7 +165,7 @@ def resolve_windows(time_refs: list[TimeRef], as_of: date, params: TemporalParam
     for i, ref in enumerate(time_refs):
         try:
             raw = _raw_window(ref, as_of, params, data_range)
-        except TimeResolutionError:
+        except (ValueError, OverflowError):  # Invalid or unrepresentable calendar dates.
             return [], codes.E_TIME_UNSUPPORTED
         if raw is None:
             continue
