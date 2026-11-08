@@ -2,7 +2,7 @@
 
 ``fold`` removes diacritics. It is ONLY for retrieval keys, SQL identifiers and
 keyword matching. Never apply it to answers, data values, or scorer input.
-Its behavior is a shared surface (SPEC §15.2): changes need consumer review.
+Its behavior is a shared surface (SPEC §15.2): tell its consumers before changing it.
 """
 
 from __future__ import annotations

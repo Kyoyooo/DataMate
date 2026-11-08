@@ -148,7 +148,7 @@ main process (asyncio event loop)
 ```
 
 ### 4.2 Package layout, ownership, and review
-| Module | Component | Owner | Required reviewer | Depends on |
+| Module | Component | Owner | Suggested reviewer | Depends on |
 |---|---|---|---|---|
 | `datamate/contracts/` | All shared types (§5), protocols, test doubles | **Lead** | Members whose components produce or consume the changed type | stdlib, pydantic |
 | `datamate/config.py` | RunConfig loader (§6) | M4 | Lead | contracts |
@@ -172,7 +172,7 @@ main process (asyncio event loop)
 | `datamate/eval/` | C14 scorer, harness (not imported by `run.py`) | **Lead** | M2 (scoring), M4 (harness) | contracts, all |
 | `tests/contract/`, `tests/integration/`, `tests/determinism/`, `tests/golden/` | Shared tests (§14) | **Lead** | M2 for goldens | — |
 
-The ownership and reviewer columns are mirrored in `CODEOWNERS`; CI requires the listed reviewer's approval.
+Review is optional; only pull-request-only merging to `main` is enforced (§18.2, `CONTRIBUTING.md`).
 
 ### 4.3 Dependency and public-API rules
 - `contracts` imports nothing from `datamate`.
@@ -195,6 +195,7 @@ The ownership and reviewer columns are mirrored in `CODEOWNERS`; CI requires the
 ### 5.1 General rules
 - Implemented as **pydantic v2** models in `datamate/contracts/`, with `model_config = ConfigDict(frozen=True, extra="forbid", strict=True)`.
 - `CONTRACTS_VERSION = "1.0.0"` (semver, §15). Every log record carries it.
+- **Implemented surface:** `datamate/contracts/` v1.0.0 implements the P1 subset of this section. §18.3 lists every difference; where they differ for P1, the code and §18.3 are authoritative.
 - JSON Schemas are exported to `contracts/schemas/<Name>.json` by a script and committed. CI fails if exported schemas differ from committed ones without a version bump.
 - Dates are `datetime.date` in memory and ISO-8601 strings on the wire. Decimal values are `decimal.Decimal` in memory and **never** pass through binary floating point between the executor and the formatter.
 - Text is NFC-normalized at the boundary where it enters the system (input files, model output). Contracts never hold accent-folded text except fields explicitly named `*_folded`.
@@ -1097,11 +1098,11 @@ None of these changes a component boundary or an approved decision.
 
 | ID | Item | Owner | Due | Default until resolved |
 |---|---|---|---|---|
-| V1 | JSON wire shape of `list` answers (items only? codes or names?) per Brief §2.2 | Lead (L-11) | I0 | Array of `item` values |
-| V2 | JSON wire shape of `table` answers per Brief §2.2 | Lead (L-11) | I0 | `{"columns", "rows"}` |
-| V3 | Rounding mode for 2-decimal rounding; int vs float literal (AP Q5) | Lead (L-11) | I0, confirm with organizers | `ROUND_HALF_UP`, integer literal when integral |
-| V4 | `boolean` encoding | Lead (L-11) | I0 | JSON `true`/`false` |
-| V5 | `tie_code` ordering (numeric vs lexicographic codes) | Lead (L-11), M2 | I1 (from training references) | numeric if all numeric |
+| V1 | JSON wire shape of `list` answers (items only? codes or names?) per Brief §2.2 | Lead (L-11) | **Closed 11-08** | JSON array of values. Train: 193 lists, 106 all names and 87 all integers, never mixed, never empty, length 2–11. Names are the wire value; codes are accepted forms in `alias`, one alias list per position |
+| V2 | JSON wire shape of `table` answers per Brief §2.2 | Lead (L-11) | **Closed 11-08** | `{"columns", "rows"}`. Train: 19 tables, 71 rows, every cell pair `[name, integer]`; `alias` has one list per row for the name cell. Only the columns `khach_hang, so_tien_no` occur in train, so other tables' column names remain unobserved (M2-11) |
+| V3 | Rounding mode for 2-decimal rounding; int vs float literal (AP Q5) | Lead (L-11) | **Partly closed 11-08; one question open** | Literals: all 1,884 `number` refs are JSON integers; all 578 `percent` refs have ≤ 2 decimals; a numeric comparison makes `50` and `50.0` equal. Money: half-up to whole VND (rulebook §3, §9). **Open question for the organizers:** the rounding mode for percents and non-money averages at an exact tie; rulebook §9 gives only "2 chữ số thập phân", and the references cannot show it. Default `ROUND_HALF_UP` |
+| V4 | `boolean` encoding | Lead (L-11) | **Closed 11-08** | JSON `true`/`false`: all 23 train refs; rulebook §9 marks `1` and `"có"` wrong |
+| V5 | `tie_code` ordering (numeric vs lexicographic codes) | Lead (L-11), M2 | **Closed for train 11-08** | Train alias codes are fixed-width (`SP` + 4 digits, `KH` + 4, `NCC` + 3), so both orders agree; no all-digit codes occur. Keep numeric-if-all-numeric. M1-01 reports any business whose codes vary in width |
 | V6 | `calendar.csv` column names and leap-month encoding | M2 (M2-01) | M0 | Alias table |
 | V7 | Reference behavior for out-of-range windows (AP Q7) | Lead | I2 | Abstain on zero coverage |
 | V8 | Per-business setup time attribution in `elapsed_ms` (AP Q8) | Lead | I1 | Excluded; logged in businesses.jsonl |
@@ -1137,9 +1138,9 @@ Question: `{"id": "q_00042", "business_id": "biz_007", "question": "doanh thu th
 
 ---
 
-## 18. Bootstrap corrections and deferrals (2026-11-07, pending lead approval)
+## 18. Bootstrap corrections and deferrals (2026-11-07, accepted when the L-04 pull request merges)
 
-The bootstrap codebase (`src/datamate`, contracts `0.1.0`) implements a **P1 subset** of this specification. It does **not** claim full compliance. This section records (a) corrections to this specification found while inspecting the actual train/public_test data and rulebooks, and (b) requirements the bootstrap deliberately defers. Each correction is a proposal until the lead approves it through §15; until then the code follows the correction, because the original text contradicts the data.
+The bootstrap codebase (`src/datamate`, contracts `1.0.0` freeze candidate) implements a **P1 subset** of this specification. It does **not** claim full compliance. This section records (a) corrections to this specification found while inspecting the actual train/public_test data and rulebooks, and (b) requirements the bootstrap deliberately defers. Each correction is a proposal until the lead merges the L-04 pull request; until then the code follows the correction, because the original text contradicts the data.
 
 ### 18.1 Design corrections
 
@@ -1157,9 +1158,9 @@ The bootstrap codebase (`src/datamate`, contracts `0.1.0`) implements a **P1 sub
 
 | Requirement | Bootstrap state | Task |
 |---|---|---|
-| §5.1 strict pydantic mode, exported JSON Schemas, schema-diff CI | Frozen, `extra="forbid"` models; no strict mode; no exported schemas | L-04 |
-| §5.10 `ReplayModelClient`, `FakeExecutor`, conformance suites | Only `ScriptedModelClient` (dev-only) | M3-13, L-04 |
-| §7.1 TemporalParams from the rulebook (model call, span validation); calendar validation | Generic defaults, `source="generic"`, logged with `F_TEMPORAL_GENERIC` | M2-05, M2-02 |
+| §5.1 strict pydantic mode, exported JSON Schemas, schema-diff CI | Frozen, `extra="forbid"` models; no strict mode; no exported schemas | Not scheduled: add when a consumer needs it |
+| §5.10 `ReplayModelClient`, `FakeExecutor`, conformance suites | Only `ScriptedModelClient` (dev-only) | M3-13; suites when a second implementation exists |
+| §7.1 TemporalParams from the rulebook (model call, span validation); calendar validation | Generic defaults, empty `provenance`, logged with `F_TEMPORAL_GENERIC` | M2-05, M2-02 |
 | §7.2 ingestion: encodings, VN/EN separators, suffixes, non-ISO dates, Excel, SQLite, header/total detection, joins, budgeted SchemaCard | Fixture CSV reader only (UTF-8, ISO dates, plain numbers); Excel/SQLite skipped with a warning; business `failed` if nothing readable. **Too slow for real data**: row-by-row insert did not finish the 30 training businesses within 10 minutes | M1-03…M1-10 |
 | §7.4 abbreviation normalization; JSON-schema-constrained decoding | Not implemented | M1-02, M3-02, M3-04 |
 | §7.5 year-omitted date ranges, rolling weeks/months, same period last year, "same days of previous month", lunar windows, shifts | `unsupported` → abstain | M2-04, M2-09 |
@@ -1170,3 +1171,32 @@ The bootstrap codebase (`src/datamate`, contracts `0.1.0`) implements a **P1 sub
 | §7.13 `HttpModelClient`, replica manager | Not implemented; production config fails at startup with exit 2 | M3-02, M4-03 |
 | §7.14 harness, folds, run records, `compare_runs` | Scorer only (`datamate.eval.score`) | L-10, L-12 |
 | §2.1 `predict.sh`, Docker image | Not implemented | M4-09 |
+| §4.2, §14.7, §15 reviewer approvals, CODEOWNERS, daily merge window as a gate | **Dropped** for this team: the only enforced rule is pull-request-only merging to `main`; affected members are told about shared-interface changes | L-19 |
+
+### 18.3 Contract v1.0.0 freeze candidate (TASKS L-04)
+
+**Freeze rule.** v1.0.0 settles everything that would be a *major* change later (§15.1). Fields that can arrive later as optional additions stay out until a consumer needs them, as minor versions.
+
+**Changes made for the freeze (0.1.0 → 1.0.0)**
+
+| Change | Why now | Affects |
+|---|---|---|
+| `TemporalParams.source` replaced by per-field `provenance: {field: {source, span}}` and `uses_generic()` | M2-05 validates field by field (§7.1); changing the type after the freeze would be major | M2, M3 |
+| `SubmissionRecord` validates the wire shape of each type; `reason` only on `unanswerable`; `abstain` carries nothing | A wrong format scores as wrong (Brief §4); all 3,000 training references pass | M2, M4 |
+| `D_UNCLEAR`, `E_INPUT_INVALID`, and all `W_*` codes registered in `contracts/codes.py`; a test fails on any unregistered code in `src/` | §10.2 requires one registry | M1, M2, M4 |
+| Enums `NumericKind`, `ListOrder`, `Granularity`, `DateGranularity`, `DecisionKind`, and `ParamProvenance` exported publicly | Public-API rule, §4.3 | all |
+
+**Differences from §5, accepted when the same pull request merges**
+
+| Contract | v1.0.0 | Reason | Affects |
+|---|---|---|---|
+| `QuestionFrame` | Adds `numeric_kind`, `list_order` (DC-1, DC-2); `mentions`, `group_by_text`, `comparison`, `needs_procedural` are not present yet | Later additions are optional fields (M1-12, M3-04) | M2, M3 |
+| `TimeExpr` | P1 kinds only; `rolling.unit` is `day`; `date` and `date_range` require full dates | Year-omitted ranges, rolling weeks/months, same period last year, and lunar kinds arrive as **new kinds or wider enums** (minor), not by making existing date fields nullable (M2-04, M2-09) | M2, M3 |
+| `SolverOutput` | `sql`, `notes` only | Result shape follows from `QuestionFrame`; `python` arrives with M3-11 | M2, M3 |
+| `ExecutionResult.rows` | In-memory `Decimal`/`int`/`str`/`bool`/`date`/`None`, never float | The tagged JSON of §5.7 stays private to the sandbox worker boundary (M3-07) | M3 |
+| `ModelCall` | Adds `backend`; `replica` and token counts not present yet | Optional additions (M3-02, M4-03) | M3, M4 |
+| `Stage` | `parse`, `solve`, `repair` | New stages are new enum members (M2-05, M1-13, M3-11) | M1, M2, M3 |
+| `BusinessCatalog`, `ColumnInfo`, `TableInfo` | `warnings: list[str]` as `"<CODE> <detail>"`; `null_count` instead of `null_rate`; joins, keys, and date-column lists not present yet | Strings stay greppable and routable; the rest are additions (M1-10) | M1, M2, M3 |
+| `TypedValue` | Numeric values carry `numeric_kind`; one kind per table | Per-column kinds are an addition (M2-11) | M2, M3 |
+| `LogRecord` | P1 fields; `inputs`, `views_used`, `degrade` not present yet | Optional additions when those features exist | M4 |
+| Protocols | `ModelClient` is synchronous and lives in `llm/` (DC-5); other §5.10 protocols are not defined | Added with their second implementation | M3, M4 |

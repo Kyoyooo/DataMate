@@ -39,7 +39,6 @@ from datamate.contracts import (
 )
 from datamate.lexicon import fold
 
-D_UNCLEAR = "D_UNCLEAR"
 PERCENT_PLAUSIBLE_MAX = Decimal(100_000)
 
 
@@ -67,7 +66,7 @@ def pre_solve_decision(frame: QuestionFrame, windows: list[TimeWindow], cat: Bus
     """Rules 2–4. A non-None result means solving is unnecessary."""
     a = frame.answerability
     if a.status == "unclear":
-        return Decision(kind="abstain", reason_code=D_UNCLEAR)
+        return Decision(kind="abstain", reason_code=codes.D_UNCLEAR)
     if a.status == "missing_field" and a.missing_fields:
         if not any(field_in_catalog(f, cat) for f in a.missing_fields):
             return Decision(kind="unanswerable", reason_code=codes.D_UNANSWERABLE_CONFIRMED,

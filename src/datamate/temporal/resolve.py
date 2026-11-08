@@ -169,7 +169,7 @@ def resolve_windows(time_refs: list[TimeRef], as_of: date, params: TemporalParam
                 end = as_of
                 flags.append("F_CLIPPED_TO_AS_OF")
             cov = coverage(start, end, data_range, as_of)
-        if params.source == "generic":
+        if params.uses_generic():
             flags.append("F_TEMPORAL_GENERIC")
         windows.append(TimeWindow(ref_index=i, role=ref.role, start=start, end=end,
                                   granularity=gran, coverage_ratio=cov, flags=flags))

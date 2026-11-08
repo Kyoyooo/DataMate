@@ -18,7 +18,7 @@ from pathlib import Path
 
 import duckdb
 
-from datamate.contracts import BusinessCatalog, ColumnInfo, DateRange, TableInfo
+from datamate.contracts import BusinessCatalog, ColumnInfo, DateRange, TableInfo, codes
 from datamate.ingest import convert, infer_column_type, read_csv
 from datamate.lexicon import nfc, to_identifier
 
@@ -76,8 +76,8 @@ def render_schema_card(tables: list[TableInfo], data_range: DateRange | None,
                        warnings: list[str]) -> str:
     """Deterministic plain-text description of the catalog for prompts (SPEC §7.2.9).
 
-    The format is a consumer-visible contract for prompts (M3): change it only
-    with consumer review.
+    The format is a consumer-visible contract for prompts (M3): tell M3 before
+    changing it.
     """
     lines: list[str] = []
     for t in tables:
@@ -125,13 +125,13 @@ def setup_business(business_dir: Path, business_id: str, work_dir: Path) -> Busi
         for path in files:
             suffix = path.suffix.lower()
             if suffix in _UNSUPPORTED:
-                warnings.append(f"W_UNSUPPORTED_FILE {path.name}")
+                warnings.append(f"{codes.W_UNSUPPORTED_FILE} {path.name}")
                 continue
             if suffix != ".csv":
                 continue
             header, rows = read_csv(path)
             if not header:
-                warnings.append(f"W_EMPTY_FILE {path.name}")
+                warnings.append(f"{codes.W_EMPTY_FILE} {path.name}")
                 continue
             table = _unique(used_table_names + [to_identifier(path.stem)])[-1]
             used_table_names.append(table)

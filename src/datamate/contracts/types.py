@@ -13,13 +13,14 @@ producer/consumer of the changed type.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "0.1.0"  # pre-1.0: P1 bootstrap subset of SPEC §5
+CONTRACTS_VERSION = "1.0.0"  # P1 surface of SPEC §5; deviations listed in SPEC §18.3
 
 
 class Contract(BaseModel):
@@ -51,18 +52,31 @@ class Question(Contract):
 # --------------------------------------------------------------------------- split level
 
 
+class ParamProvenance(Contract):
+    source: Literal["rulebook", "generic"]
+    span: str | None = None  # verbatim rulebook quote when source == "rulebook"
+
+
 class TemporalParams(Contract):
     """Time conventions of the active split (SPEC §5.5).
 
-    P1 uses the generic defaults below (ISO conventions), *not* values learned
-    from the training rulebook. Extraction from the mounted rulebook is TASKS M2-05.
+    Defaults are generic ISO conventions, *not* values learned from the training
+    rulebook. Extraction from the mounted rulebook is TASKS M2-05 and validates
+    field by field, so provenance is per field; a field absent from
+    ``provenance`` is generic.
     """
 
     week_start: Literal["mon", "sun"] = "mon"
     to_date_end: Literal["as_of", "day_before_as_of"] = "as_of"
     rolling_includes_as_of: bool = True
     prior_period_full: bool = True
-    source: Literal["generic", "rulebook"] = "generic"
+    provenance: dict[str, ParamProvenance] = {}
+
+    def uses_generic(self) -> bool:
+        """True if any parameter did not come from the mounted rulebook."""
+        names = ("week_start", "to_date_end", "rolling_includes_as_of", "prior_period_full")
+        return any(n not in self.provenance or self.provenance[n].source == "generic"
+                   for n in names)
 
 
 class SplitContext(Contract):
@@ -353,6 +367,9 @@ class Decision(Contract):
 # --------------------------------------------------------------------------- outputs
 
 
+_WIRE_DATE = re.compile(r"\d{4}-\d{2}(-\d{2})?")
+
+
 class SubmissionRecord(Contract):
     """One line of submission.jsonl (Brief §4). ``answer`` is already in wire form."""
 
@@ -360,6 +377,40 @@ class SubmissionRecord(Contract):
     type: AnswerType | Literal["unanswerable", "abstain"]
     answer: Any = None
     reason: str | None = None
+
+    @model_validator(mode="after")
+    def _wire_shape(self) -> SubmissionRecord:
+        """Each type has exactly one wire format; a wrong format scores as wrong (Brief §4)."""
+        t, a = self.type, self.answer
+        if t in ("unanswerable", "abstain"):
+            if a is not None or (t == "abstain" and self.reason is not None):
+                raise ValueError(f"{t} records carry no answer")
+            return self
+        if self.reason is not None:
+            raise ValueError("reason is only valid for unanswerable")
+
+        def is_num(x: Any) -> bool:
+            return isinstance(x, (int, Decimal)) and not isinstance(x, bool)
+
+        if t in ("number", "percent"):
+            ok = is_num(a)
+        elif t == "string":
+            ok = isinstance(a, str)
+        elif t == "date":
+            ok = isinstance(a, str) and _WIRE_DATE.fullmatch(a) is not None
+        elif t == "boolean":
+            ok = isinstance(a, bool)
+        elif t == "list":
+            ok = isinstance(a, list) and all(isinstance(x, str) or is_num(x) for x in a)
+        else:  # table
+            ok = (isinstance(a, dict) and set(a) == {"columns", "rows"}
+                  and isinstance(a["columns"], list) and isinstance(a["rows"], list)
+                  and all(isinstance(r, list) and len(r) == len(a["columns"])
+                          and all(c is None or isinstance(c, str) or is_num(c) for c in r)
+                          for r in a["rows"]))
+        if not ok:
+            raise ValueError(f"answer is not a valid wire value for type {t}: {a!r}")
+        return self
 
     def to_wire(self) -> dict[str, Any]:
         out: dict[str, Any] = {"id": self.id, "type": self.type}
