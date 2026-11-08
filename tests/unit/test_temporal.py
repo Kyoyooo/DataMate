@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
+from random import Random
 
 import pytest
 from pydantic import ValidationError
@@ -12,6 +13,8 @@ from datamate.temporal import resolve_windows
 
 GENERIC = TemporalParams()
 DATA = DateRange(start=date(2025, 1, 1), end=date(2026, 12, 31))
+PROPERTY_SEED = 0x20261108
+ONE_DAY = timedelta(days=1)
 
 
 def ref(**expr) -> TimeRef:
@@ -235,3 +238,79 @@ def test_all_time_uses_data_range_and_unsupported_is_an_error():
     assert err is None and windows[0].start == DATA.start and windows[0].end == date(2026, 3, 4)
     _, err = resolve_windows([ref(kind="unsupported", reason="Tết")], date(2026, 3, 4), GENERIC, DATA)
     assert err == "E_TIME_UNSUPPORTED"
+
+
+def _random_date(rng: Random) -> date:
+    return date.fromordinal(rng.randint(date(1900, 1, 1).toordinal(), date(2150, 12, 31).toordinal()))
+
+
+def _check_generated_case(refs, as_of, params, expected_start, expected_end):
+    windows, err = resolve_windows(refs, as_of, params, None)
+    assert err is None and len(windows) == len(refs)
+    window = windows[-1]
+    assert window.start <= window.end <= as_of
+    assert window.start == expected_start
+    assert (window.end - window.start).days == (expected_end - expected_start).days
+    assert (windows, err) == resolve_windows(refs, as_of, params, None)
+
+
+@pytest.mark.parametrize("unit", ["day", "week", "month"])
+def test_spec_7_5_rolling_seeded_cases(unit):
+    rng = Random(PROPERTY_SEED)
+    for _ in range(2_000):
+        as_of = _random_date(rng)
+        include_today = rng.choice([True, False])
+        end = as_of if include_today else as_of - ONE_DAY
+        count = rng.randint(1, 24)
+        if unit == "month":
+            # Walk month boundaries as an oracle for the resolver's indexed month shift.
+            anchor = end
+            for _ in range(count):
+                anchor = anchor.replace(day=1) - ONE_DAY
+            start = anchor.replace(day=min(end.day, anchor.day)) + ONE_DAY
+        else:
+            days = count if unit == "day" else 7 * count
+            start = end + ONE_DAY - timedelta(days=days)
+        refs = [ref(kind="rolling", unit=unit, count=count)]
+        params = TemporalParams(rolling_includes_as_of=include_today)
+        _check_generated_case(refs, as_of, params, start, end)
+
+
+def test_spec_7_5_yearless_day_seeded_cases():
+    rng = Random(PROPERTY_SEED)
+    for _ in range(2_000):
+        as_of = _random_date(rng)
+        sample = date(2000, 1, 1) + timedelta(days=rng.randrange(366))
+        expected = as_of
+        while (expected.month, expected.day) != (sample.month, sample.day):
+            expected -= ONE_DAY
+        refs = [ref(kind="date", date={"month": sample.month, "day": sample.day})]
+        _check_generated_case(refs, as_of, GENERIC, expected, expected)
+
+
+@pytest.mark.parametrize("alignment", ["calendar_dates", "elapsed_days"])
+def test_spec_7_5_prior_year_seeded_cases(alignment):
+    rng = Random(PROPERTY_SEED)
+    params = TemporalParams(same_period_alignment=alignment)
+    for _ in range(1_000):
+        end = _random_date(rng)
+        start = end - timedelta(days=rng.randrange(367))
+        expected_end = end.replace(year=end.year - 1, day=28 if (end.month, end.day) == (2, 29) else end.day)
+        if alignment == "elapsed_days":
+            expected_start = expected_end - (end - start)
+        else:
+            day = 28 if (start.month, start.day) == (2, 29) else start.day
+            expected_start = start.replace(year=start.year - 1, day=day)
+        refs = [ref(kind="date_range", start=start, end=end), ref(kind="same_period_prior_year", ref=0)]
+        _check_generated_case(refs, end, params, expected_start, expected_end)
+
+
+def test_spec_7_5_previous_month_seeded_cases():
+    rng = Random(PROPERTY_SEED)
+    for _ in range(1_000):
+        as_of = _random_date(rng)
+        previous_month_end = as_of.replace(day=1) - ONE_DAY
+        expected_start = previous_month_end.replace(day=1)
+        expected_end = min(previous_month_end, expected_start + timedelta(days=as_of.day - 1))
+        refs = [ref(kind="relative_period", unit="month", offset=0), ref(kind="same_days_previous_month", ref=0)]
+        _check_generated_case(refs, as_of, GENERIC, expected_start, expected_end)
