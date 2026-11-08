@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.2.0"  # additive M2-02 calendar diagnostics
+CONTRACTS_VERSION = "1.3.0"  # additive M2-05 temporal profile extension
 
 
 class Contract(BaseModel):
@@ -70,6 +70,7 @@ class TemporalParams(Contract):
     to_date_end: Literal["as_of", "day_before_as_of"] = "as_of"
     rolling_includes_as_of: bool = True
     prior_period_full: bool = True
+    year_omitted_policy: Literal["most_recent_not_after_as_of"] = "most_recent_not_after_as_of"
     same_period_alignment: Literal["calendar_dates", "elapsed_days"] = "calendar_dates"
     provenance: dict[str, ParamProvenance] = {}
 
