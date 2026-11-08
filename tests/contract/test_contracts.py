@@ -73,6 +73,8 @@ def test_temporal_provenance_is_per_field():
     full = {**partly, "prior_period_full": ParamProvenance(source="rulebook", span="y")}
     assert TemporalParams(provenance=full).uses_generic()  # same_period_alignment still generic
     full["same_period_alignment"] = ParamProvenance(source="rulebook", span="z")
+    assert TemporalParams(provenance=full).uses_generic()  # year_omitted_policy still generic
+    full["year_omitted_policy"] = ParamProvenance(source="rulebook", span="w")
     assert not TemporalParams(provenance=full).uses_generic()
 
 
