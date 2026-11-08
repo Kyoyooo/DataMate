@@ -43,7 +43,7 @@ When time is short, the priority order is: **compliance and validity → determi
 - M2 holds all deterministic answer logic (dates in, typed answer out). This keeps rule interpretation, the gate, and formatting under one owner who can see how they interact.
 
 ### 2.2 The lead's responsibilities
-1. Contracts: 0.1.0 is merged (bootstrap); freeze v1.0.0 (TASKS L-04); approve every later change (SPEC §15).
+1. Contracts: v1.0.0 is merged (TASKS L-04); approve every later change (SPEC §15).
 2. Integration: run the daily merge window; keep `main` green; run the walking skeleton and the first full run.
 3. Measurement: own the scorer, harness, nightly runs, determinism checks, and error analysis. No accuracy claim counts unless it comes from the harness with a run record.
 4. Decisions: DEC-3, -4, -8, -10, -11, -13, -14, P3 go/no-go, freeze (§7).
@@ -67,7 +67,7 @@ The backlog in `TASKS.md` is organized in the same seven phases. Dates are targe
 
 | Phase | Target | Content | Exit criterion |
 |---|---|---|---|
-| **1. Shared foundation and fixture pipeline** | 11-07 | Package, contracts 0.1.0, fixture business, scripted CPU pipeline, tests, CI file, docs (TASKS L-21) | **Engineering criterion reached 11-07:** `pytest` green on CPU; fixture run exits 0; production mode refuses dev-only components. **Phase not closed** until L-02, L-04, and L-19 finish (`TASKS.md` Phase 1) |
+| **1. Shared foundation and fixture pipeline** | 11-07 | Package, contracts 0.1.0, fixture business, scripted CPU pipeline, tests, CI file, docs (TASKS L-21) | **Closed 11-08:** `pytest` green on CPU; fixture run exits 0; production mode refuses dev-only components; contracts 1.0.0 merged; `main` protected (`TASKS.md` Phase 1) |
 | **2. Real P1 components in parallel** | 11-08 → 11-09 | Each owner replaces their stand-in with the real component behind the same contracts | Each component's acceptance tests pass on CPU; contracts v1.0.0 frozen (11-08 12:00) |
 | **3. First real end-to-end run on Colab** | 11-09 | `HttpModelClient` + real ingestion on the full training split | All 3,000 questions written with valid logs; PA per type from the harness; runtime projection; **DEC-3** |
 | **4. Evaluation and correctness fixes** | 11-10 → 11-11 | Error analysis, owner fixes, determinism check | Top error classes owned; two identical Colab runs within \|ΔPA\| ≤ 0.005 |

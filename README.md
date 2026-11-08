@@ -58,7 +58,7 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 
 | Package | Owner | Role | Bootstrap state |
 |---|---|---|---|
-| `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.0.0 freeze candidate (P1 surface; not merged yet, TASKS L-04) |
+| `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.0.0 (P1 surface; deviations in SPEC §18.3) |
 | `eval/` | Lead | Scorer (`python -m datamate.eval.score`); harness later | scorer |
 | `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | fixture CSV only (UTF-8, ISO dates, plain numbers) |
 | `rules/`, `temporal/`, `decision/`, `formatting/` | M2 | Rulebook, time windows, gate, wire values | generic time params; P1 resolver subset |
