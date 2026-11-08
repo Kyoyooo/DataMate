@@ -135,6 +135,19 @@ class BusinessCatalog(Contract):
 # --------------------------------------------------------------------------- question level
 
 
+class MonthDay(Contract):
+    """A calendar date whose year was omitted from the question."""
+
+    month: int = Field(ge=1, le=12)
+    day: int = Field(ge=1, le=31)
+    year: None = None
+
+    @model_validator(mode="after")
+    def _valid_month_day(self) -> MonthDay:
+        date(2000, self.month, self.day)  # Leap year: allow February 29.
+        return self
+
+
 class DateExpr(Contract):
     kind: Literal["date"] = "date"
     date: date
@@ -144,6 +157,23 @@ class DateRangeExpr(Contract):
     kind: Literal["date_range"] = "date_range"
     start: date
     end: date
+
+
+class YearlessDateExpr(Contract):
+    kind: Literal["yearless_date"] = "yearless_date"
+    date: MonthDay
+
+
+class YearlessDateRangeExpr(Contract):
+    kind: Literal["yearless_date_range"] = "yearless_date_range"
+    start: date | MonthDay
+    end: date | MonthDay
+
+    @model_validator(mode="after")
+    def _has_yearless_endpoint(self) -> YearlessDateRangeExpr:
+        if isinstance(self.start, date) and isinstance(self.end, date):
+            raise ValueError("yearless_date_range requires at least one yearless endpoint")
+        return self
 
 
 class CalendarPeriodExpr(Contract):
@@ -184,6 +214,8 @@ class UnsupportedExpr(Contract):
 TimeExpr = Annotated[
     DateExpr
     | DateRangeExpr
+    | YearlessDateExpr
+    | YearlessDateRangeExpr
     | CalendarPeriodExpr
     | RelativePeriodExpr
     | RollingExpr

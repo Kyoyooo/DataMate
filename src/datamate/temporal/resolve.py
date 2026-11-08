@@ -4,7 +4,7 @@ Pure functions: structured ``TimeExpr`` + ``as_of_date`` + split parameters →
 inclusive date windows. No I/O, no model calls.
 
 Supported now (all documented in tests/unit/test_temporal.py):
-  date, date_range (full dates), calendar_period (month/quarter/year, optional
+  date and date_range (full or yearless dates), calendar_period (month/quarter/year, optional
   year), relative_period (day/week/month/quarter/year, offset ≤ 0, to_date),
   rolling (days/weeks/months), all_time, unsupported → E_TIME_UNSUPPORTED.
 
@@ -16,14 +16,13 @@ Conventions:
   ``as_of_date``) / window days. 0 means "no data for this period", which the
   decision step treats differently from a computed zero.
 
-Deferred (TASKS M2-04, M2-09): year-omitted date ranges,
-"same days of previous month" comparisons, same period last year, lunar
+Deferred (TASKS M2-04, M2-09): "same days of previous month" comparisons, same period last year, lunar
 holidays (Tết), sub-day shifts (ca sáng / ca chiều).
 """
 
 from __future__ import annotations
 
-from calendar import monthrange
+from calendar import isleap, monthrange
 from datetime import date, timedelta
 
 from datamate.contracts import (
@@ -32,12 +31,15 @@ from datamate.contracts import (
     DateExpr,
     DateRange,
     DateRangeExpr,
+    MonthDay,
     RelativePeriodExpr,
     RollingExpr,
     TemporalParams,
     TimeRef,
     TimeWindow,
     UnsupportedExpr,
+    YearlessDateExpr,
+    YearlessDateRangeExpr,
     codes,
 )
 
@@ -113,15 +115,31 @@ def _calendar_period(e: CalendarPeriodExpr, as_of: date) -> tuple[date, date]:
     return (start, end) if start <= as_of else bounds(as_of.year - 1)
 
 
+def _resolve_date(value: date | MonthDay, as_of: date) -> date:
+    if isinstance(value, date):
+        return value
+    year = as_of.year - int((value.month, value.day) > (as_of.month, as_of.day))
+    if (value.month, value.day) == (2, 29):
+        while year > 0 and not isleap(year):
+            year -= 1
+    return date(year, value.month, value.day)
+
+
 def _raw_window(ref: TimeRef, as_of: date, params: TemporalParams,
                 data_range: DateRange | None) -> tuple[date, date, str] | None:
     e = ref.expr
-    if isinstance(e, DateExpr):
-        return e.date, e.date, "day"
-    if isinstance(e, DateRangeExpr):
-        if e.start > e.end:
+    if isinstance(e, (DateExpr, YearlessDateExpr)):
+        day = _resolve_date(e.date, as_of)
+        return day, day, "day"
+    if isinstance(e, (DateRangeExpr, YearlessDateRangeExpr)):
+        start = _resolve_date(e.start, as_of)
+        end = e.end
+        if isinstance(end, MonthDay):
+            crosses_year = (end.month, end.day) < (start.month, start.day)
+            end = date(start.year + int(crosses_year), end.month, end.day)
+        if start > end:
             raise TimeResolutionError("date_range start after end")
-        return e.start, e.end, "range"
+        return start, end, "range"
     if isinstance(e, CalendarPeriodExpr):
         s, t = _calendar_period(e, as_of)
         return s, t, e.unit

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 
 from datamate.contracts import DateRange, TemporalParams, TimeRef
 from datamate.temporal import resolve_windows
@@ -77,6 +78,61 @@ def test_spec_7_5_rolling_windows(unit, count, as_of, include_today, expected):
 def test_spec_7_5_rolling_before_minimum_date_is_unsupported():
     refs = [ref(kind="rolling", unit="month", count=1)]
     assert resolve_windows(refs, date.min, GENERIC, None) == ([], "E_TIME_UNSUPPORTED")
+
+
+@pytest.mark.parametrize("month, day, as_of, expected", [
+    (12, 31, "2026-01-01", "2025-12-31"),
+    (1, 31, "2026-01-30", "2025-01-31"),
+    (1, 31, "2026-01-31", "2026-01-31"),
+    (2, 29, "2024-02-28", "2020-02-29"),
+    (2, 29, "2024-02-29", "2024-02-29"),
+    (2, 29, "2100-03-01", "2096-02-29"),
+])
+def test_spec_7_5_yearless_day(month, day, as_of, expected):
+    expr = {"kind": "yearless_date", "date": {"month": month, "day": day, "year": None}}
+    assert win(expr, as_of) == (expected, expected)
+
+
+@pytest.mark.parametrize("start, end, as_of, expected", [
+    ({"month": 12, "day": 20}, {"month": 1, "day": 5},
+     "2026-01-03", ("2025-12-20", "2026-01-03")),
+    ({"month": 12, "day": 20}, {"month": 1, "day": 5},
+     "2026-01-06", ("2025-12-20", "2026-01-05")),
+    ("2023-12-31", {"month": 2, "day": 29}, "2026-01-01", ("2023-12-31", "2024-02-29")),
+    ({"month": 3, "day": 1}, "2026-03-15", "2026-04-01", ("2026-03-01", "2026-03-15")),
+    ({"month": 2, "day": 29}, {"month": 3, "day": 1},
+     "2025-03-05", ("2024-02-29", "2024-03-01")),
+])
+def test_spec_7_5_yearless_range(start, end, as_of, expected):
+    assert win({"kind": "yearless_date_range", "start": start, "end": end}, as_of) == expected
+
+
+@pytest.mark.parametrize("month_day", [
+    {"month": 4, "day": 31}, {"month": 13, "day": 1}, {"month": 1, "day": 0},
+    {"month": 1, "day": 1, "year": 2026},
+])
+def test_spec_7_5_invalid_yearless_day_is_rejected(month_day):
+    with pytest.raises(ValidationError):
+        ref(kind="yearless_date", date=month_day)
+
+
+def test_explicit_date_kinds_keep_frozen_shapes():
+    month_day = {"month": 3, "day": 1}
+    with pytest.raises(ValidationError):
+        ref(kind="date", date=month_day)
+    with pytest.raises(ValidationError):
+        ref(kind="date_range", start=month_day, end="2026-03-04")
+
+
+@pytest.mark.parametrize("expr, as_of", [
+    ({"kind": "yearless_date_range", "start": "2025-02-01", "end": {"month": 2, "day": 29}}, "2026-03-01"),
+    ({"kind": "yearless_date_range", "start": {"month": 2, "day": 1}, "end": "2025-01-31"}, "2025-03-01"),
+    ({"kind": "yearless_date", "date": {"month": 2, "day": 29}}, "0001-03-01"),
+])
+def test_spec_7_5_yearless_expression_without_valid_interval_is_unsupported(expr, as_of):
+    assert resolve_windows([ref(**expr)], date.fromisoformat(as_of), GENERIC, None) == (
+        [], "E_TIME_UNSUPPORTED",
+    )
 
 
 def test_current_month_is_clipped_to_as_of():

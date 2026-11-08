@@ -24,6 +24,7 @@ from datamate.contracts.types import (
     ListValue,
     LogRecord,
     ModelCall,
+    MonthDay,
     NumericKind,
     ParamProvenance,
     Question,
@@ -45,6 +46,8 @@ from datamate.contracts.types import (
     TimeWindow,
     TypedValue,
     UnsupportedExpr,
+    YearlessDateExpr,
+    YearlessDateRangeExpr,
 )
 
 __all__ = [
@@ -69,6 +72,7 @@ __all__ = [
     "ListValue",
     "LogRecord",
     "ModelCall",
+    "MonthDay",
     "NumericKind",
     "ParamProvenance",
     "Question",
@@ -90,6 +94,8 @@ __all__ = [
     "TimeWindow",
     "TypedValue",
     "UnsupportedExpr",
+    "YearlessDateExpr",
+    "YearlessDateRangeExpr",
     "codes",
     "dumps",
     "loads_exact",
