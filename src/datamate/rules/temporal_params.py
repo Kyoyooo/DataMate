@@ -10,10 +10,11 @@ from datamate.lexicon import nfc
 
 _TO_DATE_SUBJECT = r"(?:tuần này|tháng này|năm nay)(?:(?:, | và )(?:tuần này|tháng này|năm nay))*"
 _TO_DATE_PREFIX = _TO_DATE_SUBJECT + r"(?:\s*:\s*| )(?:tính )?(?:đến|tới) hết (?:ngày )?"
-_ROLLING = r"(?:n|\d+) ngày (?:gần nhất|qua)"
+_ROLLING = r"(?:n|\d+) (?:ngày|tuần|tháng) (?:gần nhất|qua)"
 _WEEK_START = r"(?:tuần bắt đầu (?:vào |từ )?|the week starts on |week starts on )"
 _WEEK_NOT_START = r"(?:tuần không bắt đầu (?:vào |từ )?|(?:the )?week does not start on )"
 _WEEKDAY = {"mon": r"(?:thứ hai|thứ 2|monday)", "sun": r"(?:chủ nhật|sunday)"}
+_OTHER_WEEKDAY = r"(?:thứ [3-7]|thứ ba|thứ tư|thứ năm|thứ sáu|thứ bảy|tuesday|wednesday|thursday|friday|saturday)"
 
 # Match complete, affirmative clauses. Values in an example, conditional, or unrecognized
 # paraphrase do not authorize a parameter override, even if the model quotes them verbatim.
@@ -29,7 +30,7 @@ _RULES: dict[str, dict[str | bool, str]] = {
         False: _ROLLING + r" (?:không tính|không bao gồm) hôm nay|rolling periods exclude (?:today|as_of_date)",
     },
     "prior_period_full": {
-        True: r"(?:tuần rồi|tuần trước)\s*:\s*cả tuần liền trước|(?:tuần trước|tháng trước) là cả (?:tuần|tháng) liền trước"
+        True: r"(?:tuần rồi|tuần trước)\s*:\s*cả tuần liền trước|(?:tuần trước là cả tuần|tháng trước là cả tháng) liền trước"
         r"|prior periods use the full preceding calendar period",
         False: r"(?:tuần trước|tháng trước) chỉ tính cùng số ngày|prior periods use only the same number of elapsed days",
     },
@@ -148,10 +149,11 @@ def validate_temporal_params(rulebook: str, content: str) -> tuple[TemporalParam
         evidence = {option: {clause for clause in clauses if re.fullmatch(pattern, clause)}
                     for option, pattern in rules.items()}
         supported = {option for option, matches in evidence.items() if matches}
-        negated_week = name == "week_start" and any(
-            re.fullmatch(_WEEK_NOT_START + _WEEKDAY[value], clause) for clause in clauses
+        conflicting_week = name == "week_start" and any(
+            re.fullmatch(_WEEK_NOT_START + _WEEKDAY[value], clause)
+            or re.fullmatch(_WEEK_START + _OTHER_WEEKDAY, clause) for clause in clauses
         )
-        if negated_week or supported - {value}:
+        if conflicting_week or supported - {value}:
             diagnostics[name] = "contradictory_rulebook"
         elif not evidence[value].intersection(_clauses(span)):
             diagnostics[name] = "insufficient_evidence"
