@@ -1138,9 +1138,9 @@ Question: `{"id": "q_00042", "business_id": "biz_007", "question": "doanh thu th
 
 ---
 
-## 18. Bootstrap corrections and deferrals (2026-11-07, accepted when the L-04 pull request merges)
+## 18. Bootstrap corrections and deferrals (accepted 2026-11-08, PR #4)
 
-The bootstrap codebase (`src/datamate`, contracts `1.0.0` freeze candidate) implements a **P1 subset** of this specification. It does **not** claim full compliance. This section records (a) corrections to this specification found while inspecting the actual train/public_test data and rulebooks, and (b) requirements the bootstrap deliberately defers. Each correction is a proposal until the lead merges the L-04 pull request; until then the code follows the correction, because the original text contradicts the data.
+The bootstrap codebase (`src/datamate`, contracts `1.0.0`) implements a **P1 subset** of this specification. It does **not** claim full compliance. This section records (a) corrections to this specification found while inspecting the actual train/public_test data and rulebooks, and (b) requirements the bootstrap deliberately defers. The lead accepted these corrections by merging the L-04 pull request (PR #4); where they differ from earlier sections, this section prevails.
 
 ### 18.1 Design corrections
 
@@ -1173,7 +1173,7 @@ The bootstrap codebase (`src/datamate`, contracts `1.0.0` freeze candidate) impl
 | §2.1 `predict.sh`, Docker image | Not implemented | M4-09 |
 | §4.2, §14.7, §15 reviewer approvals, CODEOWNERS, daily merge window as a gate | **Dropped** for this team: the only enforced rule is pull-request-only merging to `main`; affected members are told about shared-interface changes | L-19 |
 
-### 18.3 Contract v1.0.0 freeze candidate (TASKS L-04)
+### 18.3 Contract v1.0.0 (TASKS L-04)
 
 **Freeze rule.** v1.0.0 settles everything that would be a *major* change later (§15.1). Fields that can arrive later as optional additions stay out until a consumer needs them, as minor versions.
 
@@ -1186,7 +1186,7 @@ The bootstrap codebase (`src/datamate`, contracts `1.0.0` freeze candidate) impl
 | `D_UNCLEAR`, `E_INPUT_INVALID`, and all `W_*` codes registered in `contracts/codes.py`; a test fails on any unregistered code in `src/` | §10.2 requires one registry | M1, M2, M4 |
 | Enums `NumericKind`, `ListOrder`, `Granularity`, `DateGranularity`, `DecisionKind`, and `ParamProvenance` exported publicly | Public-API rule, §4.3 | all |
 
-**Differences from §5, accepted when the same pull request merges**
+**Differences from §5, accepted with PR #4**
 
 | Contract | v1.0.0 | Reason | Affects |
 |---|---|---|---|
