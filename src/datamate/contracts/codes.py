@@ -22,6 +22,8 @@ E_TIME_UNSUPPORTED = "E_TIME_UNSUPPORTED"
 
 # Model calls (llm/)
 E_MODEL_ERROR = "E_MODEL_ERROR"
+E_MODEL_TIMEOUT = "E_MODEL_TIMEOUT"  # total call budget or socket timeout; never retried
+E_MODEL_TRANSPORT = "E_MODEL_TRANSPORT"  # connection/transport failure after one retry
 E_SCRIPT_MISS = "E_SCRIPT_MISS"  # ScriptedModelClient has no response (dev/tests only)
 
 # Solver and execution (solver/, sandbox/)
