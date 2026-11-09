@@ -128,10 +128,10 @@ def test_production_mode_rejects_scripted_backend(tmp_path: Path, capsys) -> Non
     assert not (out / "submission.jsonl").exists()
 
 
-def test_production_config_fails_clearly_until_client_exists(tmp_path: Path, capsys) -> None:
+def test_production_config_requires_http_endpoint(tmp_path: Path, capsys) -> None:
     code, out = _run(tmp_path, "--config", str(REPO / "config" / "run_config.json"))
     assert code == 2
-    assert "M3-02" in capsys.readouterr().err
+    assert "model.base_url is required" in capsys.readouterr().err
     assert not (out / "submission.jsonl").exists()
 
 

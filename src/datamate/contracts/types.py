@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.1.0"  # additive M2-04 temporal extensions
+CONTRACTS_VERSION = "1.2.0"  # additive M3-02 ModelCall transport evidence
 
 
 class Contract(BaseModel):
@@ -314,6 +314,7 @@ class ModelCall(Contract):
     finish_reason: str
     latency_ms: int = Field(ge=0)
     error: str | None = None
+    transport: dict[str, Any] | None = None  # optional HTTP request/response/error evidence
 
 
 class SolverOutput(Contract):
