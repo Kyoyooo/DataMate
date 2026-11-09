@@ -70,6 +70,9 @@ def test_fixture_pipeline_end_to_end(tmp_path: Path) -> None:
     assert isinstance(logs["fx_q06"]["code"], list) and len(logs["fx_q06"]["code"]) == 2
     # No SQL runs for questions decided before solving.
     assert logs["fx_q07"]["code"] is None and logs["fx_q09"]["code"] is None
+    assert logs["fx_q07"]["decision"]["features"]["coverage"][0]["state"] == "zero"
+    missing = logs["fx_q09"]["decision"]["features"]["missing_field_evidence"]
+    assert missing == [{"field": "giá vốn", "status": "absent", "source": "catalog_no_match", "columns": []}]
 
     run = json.loads((out / "logs" / "run.json").read_text(encoding="utf-8"))
     assert run["dev_mode"] is True and run["model_backend"] == "scripted"
@@ -142,6 +145,20 @@ def test_yearless_comparison_runs_through_parser_and_solver(cfg, split, catalog)
         ("primary", "2026-03-01", "2026-03-04"), ("comparison", "2026-02-01", "2026-02-04"),
     ]
     assert [call.stage for call in log.calls] == ["parse", "solve"]
+
+
+def test_missing_comparison_window_never_reaches_sql(cfg, split, catalog):
+    text = "Hôm nay có nhiều đơn hơn kỳ đối chiếu không?"
+    frame = {"expected_type": "boolean", "time": [
+        {"span": "Hôm nay", "expr": {"kind": "relative_period", "unit": "day", "offset": 0}},
+        {"span": "kỳ đối chiếu", "role": "comparison", "expr": {"kind": "all_time"}},
+    ]}
+    catalog = catalog.model_copy(update={"data_range": None})
+    record, log = run_one(text, frame, cfg=cfg, split=split, catalog=catalog)
+    assert record == {"id": "t_q1", "type": "abstain"}
+    assert log.decision["reason_code"] == "E_TIME_UNSUPPORTED"
+    assert log.decision["features"]["missing_comparison_refs"] == [1]
+    assert log.code is None and [call.stage for call in log.calls] == ["parse"]
 
 
 @pytest.mark.parametrize("source_ref, expected_type, reason", [
