@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datamate.config import ModelConfig
 from datamate.llm.client import ModelClient, request_sha256
+from datamate.llm.http import HttpModelClient, http_request_sha256
+from datamate.llm.schema import SCHEMA_ADAPTER_VERSION, schema_for_vllm
 from datamate.llm.scripted import ScriptedModelClient
 
 
@@ -21,12 +23,10 @@ def make_client(cfg: ModelConfig, *, dev: bool) -> ModelClient:
             raise ValueError("model.script_path is required for the scripted backend")
         return ScriptedModelClient.from_file(cfg.script_path)
     if cfg.backend == "http":
-        raise NotImplementedError(
-            "HttpModelClient (vLLM OpenAI-compatible client) is not implemented yet: TASKS M3-02. "
-            "Refusing to run rather than produce placeholder answers."
-        )
+        return HttpModelClient(cfg)
     raise ValueError(f"unknown model backend {cfg.backend!r}")  # pragma: no cover
 
 
-__all__ = ["ModelClient", "ProductionGuardError", "ScriptedModelClient", "make_client",
-           "request_sha256"]
+__all__ = ["HttpModelClient", "ModelClient", "ProductionGuardError", "SCHEMA_ADAPTER_VERSION",
+           "ScriptedModelClient", "http_request_sha256", "make_client", "request_sha256",
+           "schema_for_vllm"]
