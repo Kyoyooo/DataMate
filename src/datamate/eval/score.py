@@ -20,7 +20,7 @@ import argparse
 import re
 import unicodedata
 from collections import Counter
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Context, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,8 @@ def normalize_string(s: str) -> str:
 def _num(x: Any) -> Decimal | None:
     if isinstance(x, bool) or not isinstance(x, (int, float, Decimal)):
         return None
-    return Decimal(str(x)) if isinstance(x, float) else Decimal(x)
+    number = Decimal(str(x)) if isinstance(x, float) else Decimal(x)
+    return number if number.is_finite() else None
 
 
 def number_equal(pred: Any, ref: Any) -> bool:
@@ -53,7 +54,8 @@ def percent_equal(pred: Any, ref: Any) -> bool:
     if p is None or r is None:
         return False
     q = Decimal("0.01")
-    return p.quantize(q, ROUND_HALF_UP) == r.quantize(q, ROUND_HALF_UP)
+    context = Context(prec=max(4, p.adjusted() + 4, r.adjusted() + 4), rounding=ROUND_HALF_UP)
+    return p.quantize(q, context=context) == r.quantize(q, context=context)
 
 
 def string_equal(pred: Any, ref: Any, aliases: list[Any] | None = None) -> bool:
@@ -70,14 +72,43 @@ def element_equal(pred: Any, ref: Any, aliases: list[Any] | None = None) -> bool
     return number_equal(pred, ref)
 
 
+def _match_table_rows(candidates: list[list[int]]) -> bool:
+    """Find a one-to-one row match, allowing earlier matches to move when aliases overlap."""
+    by_ref: dict[int, int] = {}
+    by_pred: dict[int, int] = {}
+    for ref_index in range(len(candidates)):
+        pending = [ref_index]
+        predecessors: dict[int, int] = {}
+        free = None
+        while pending and free is None:
+            row = pending.pop()
+            for pred_index in candidates[row]:
+                if pred_index in predecessors:
+                    continue
+                predecessors[pred_index] = row
+                if pred_index not in by_pred:
+                    free = pred_index
+                    break
+                pending.append(by_pred[pred_index])
+        if free is None:
+            return False
+        while free is not None:
+            row = predecessors[free]
+            previous = by_ref.get(row)
+            by_ref[row] = free
+            by_pred[free] = row
+            free = previous
+    return True
+
+
 def _table_equal(pred: Any, ref: dict[str, Any], aliases: list[Any]) -> bool:
-    if not isinstance(pred, dict) or not isinstance(pred.get("columns"), list) \
-            or not isinstance(pred.get("rows"), list):
+    if not isinstance(pred, dict) or pred.keys() != {"columns", "rows"} \
+            or not isinstance(pred["columns"], list) or not isinstance(pred["rows"], list):
         return False
     rcols, pcols = ref["columns"], pred["columns"]
-    if len(rcols) != len(pcols):
+    if len(rcols) != len(pcols) or any(not isinstance(c, str) for c in pcols):
         return False
-    norm_p = [normalize_string(str(c)) for c in pcols]
+    norm_p = [normalize_string(c) for c in pcols]
     norm_r = [normalize_string(str(c)) for c in rcols]
     if sorted(norm_p) == sorted(norm_r) and len(set(norm_r)) == len(norm_r):
         perm = [norm_p.index(c) for c in norm_r]  # match columns by name
@@ -86,20 +117,17 @@ def _table_equal(pred: Any, ref: dict[str, Any], aliases: list[Any]) -> bool:
     prows = [r for r in pred["rows"] if isinstance(r, list) and len(r) == len(rcols)]
     if len(prows) != len(pred["rows"]) or len(prows) != len(ref["rows"]):
         return False
-    unmatched = list(range(len(prows)))
+    prows = [[r[j] for j in perm] for r in prows]
+    candidates = []
     for ri, rrow in enumerate(ref["rows"]):
         row_alias = aliases[ri] if ri < len(aliases) and isinstance(aliases[ri], list) else []
-        hit = None
-        for pi in unmatched:
-            prow = [prows[pi][j] for j in perm]
-            if all(element_equal(prow[c], rrow[c], row_alias if c == 0 else None)
-                   for c in range(len(rrow))):
-                hit = pi
-                break
-        if hit is None:
-            return False
-        unmatched.remove(hit)
-    return True
+        candidates.append([
+            pi for pi, prow in enumerate(prows)
+            if all(prow[c] is None if rrow[c] is None
+                   else element_equal(prow[c], rrow[c], row_alias if c == 0 else None)
+                   for c in range(len(rrow)))
+        ])
+    return _match_table_rows(candidates)
 
 
 def score_one(pred: dict[str, Any] | None, ref: dict[str, Any]) -> int:
@@ -110,7 +138,7 @@ def score_one(pred: dict[str, Any] | None, ref: dict[str, Any]) -> int:
     if ptype != rtype:
         return -1
     if rtype == "unanswerable":
-        return 1
+        return 1 if pred.get("answer") is None else -1
     p, r = pred.get("answer"), ref.get("answer")
     aliases = ref.get("alias") or []
     if rtype == "number":
