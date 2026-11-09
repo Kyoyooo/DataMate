@@ -1,177 +1,253 @@
-"""Business setup: files → DuckDB database + BusinessCatalog (SPEC §7.2). Owner: M1.
-
-BOOTSTRAP SCOPE: CSV files only (via ``ingest.read_csv``), row-by-row insert,
-basic profiling, and a plain-text SchemaCard. Excel and SQLite files are
-reported as warnings and skipped; a business with no readable file is marked
-``failed`` so its questions abstain instead of being answered from partial data.
-
-Deferred (TASKS M1-04, M1-05, M1-08, M1-09, M1-10): Excel/SQLite readers,
-header/total-row detection, Arrow bulk load, joins, keys, token-budgeted card.
-"""
+"""Runtime M1 catalog adapter and SchemaCard public API (SPEC 7.2)."""
 
 from __future__ import annotations
 
 import hashlib
 import re
+import time
 from datetime import date
 from pathlib import Path
 
-import duckdb
-
-from datamate.contracts import BusinessCatalog, ColumnInfo, DateRange, TableInfo
-from datamate.ingest import convert, infer_column_type, read_csv
-from datamate.lexicon import nfc, to_identifier
-
-DUCKDB_SAFE_CONFIG = {
-    # SPEC SC-3: never download or auto-load extensions (inference runs with --network none).
-    "autoinstall_known_extensions": False,
-    "autoload_known_extensions": False,
-    "threads": 1,
-}
-LOW_CARDINALITY_MAX = 20
-_UNSUPPORTED = {".xlsx", ".xlsm", ".xls", ".sqlite", ".sqlite3", ".db", ".tsv", ".txt"}
+from datamate.catalog.io import save_catalog
+from datamate.config import RunConfig
+from datamate.contracts import (
+    BusinessCatalog,
+    ColumnInfo,
+    DateColumn,
+    DateRange,
+    DroppedRows,
+    JoinEdge,
+    TableInfo,
+)
+from datamate.ingest import DataConfig, build_business_database, catalog_date_range, render_catalog
 
 
 def business_key(business_id: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_-]", "_", business_id) or "_"
-
-
-def _unique(names: list[str]) -> list[str]:
-    seen: dict[str, int] = {}
-    out = []
-    for n in names:
-        if n in seen:
-            seen[n] += 1
-            out.append(f"{n}_{seen[n]}")
-        else:
-            seen[n] = 1
-            out.append(n)
-    return out
-
-
-def _q(ident: str) -> str:
-    return '"' + ident.replace('"', '""') + '"'
-
-
-def _profile_column(con: duckdb.DuckDBPyConnection, table: str, col: str, original: str,
-                    sql_type: str) -> ColumnInfo:
-    nulls, distinct, lo, hi = con.execute(
-        f"SELECT COUNT(*) - COUNT({_q(col)}), COUNT(DISTINCT {_q(col)}), "
-        f"MIN({_q(col)})::VARCHAR, MAX({_q(col)})::VARCHAR FROM {_q(table)}"
-    ).fetchone()
-    top: list[tuple[str, int]] = []
-    if sql_type == "VARCHAR" and distinct <= LOW_CARDINALITY_MAX:
-        top = [
-            (v, int(c))
-            for v, c in con.execute(
-                f"SELECT {_q(col)}, COUNT(*) AS c FROM {_q(table)} WHERE {_q(col)} IS NOT NULL "
-                f"GROUP BY 1 ORDER BY c DESC, 1 ASC"
-            ).fetchall()
-        ]
-    return ColumnInfo(name=col, original_name=original, sql_type=sql_type, null_count=int(nulls),
-                      distinct_count=int(distinct), min=lo, max=hi, top_values=top)
-
-
-def render_schema_card(tables: list[TableInfo], data_range: DateRange | None,
-                       warnings: list[str]) -> str:
-    """Deterministic plain-text description of the catalog for prompts (SPEC §7.2.9).
-
-    The format is a consumer-visible contract for prompts (M3): change it only
-    with consumer review.
-    """
-    lines: list[str] = []
-    for t in tables:
-        lines.append(f"TABLE {t.name}  ({t.row_count} rows; source {t.source_file})")
-        for c in t.columns:
-            desc = f"  {c.name}  {c.sql_type}  nulls {c.null_count}"
-            if c.top_values:
-                vals = ", ".join(f'"{v}"({n})' for v, n in c.top_values)
-                desc += f"  values: {vals}"
-            elif c.min is not None:
-                desc += f"  range {c.min}..{c.max}"
-            desc += f'  ["{c.original_name}"]'
-            lines.append(desc)
-    if data_range is not None:
-        lines.append(f"DATES {data_range.start.isoformat()}..{data_range.end.isoformat()}")
-    for w in warnings:
-        lines.append(f"WARN {w}")
-    return "\n".join(lines) + "\n"
-
-
-def setup_business(business_dir: Path, business_id: str, work_dir: Path) -> BusinessCatalog:
-    """Materialize one business into ``<work_dir>/biz/<bkey>/catalog.duckdb``.
-
-    Never writes inside ``business_dir`` (``/data`` is read-only).
-    """
-    bkey = business_key(business_id)
-    db_dir = work_dir / "biz" / bkey
-    db_dir.mkdir(parents=True, exist_ok=True)
-    db_path = db_dir / "catalog.duckdb"
-    for stale in (db_path, db_dir / "catalog.duckdb.wal"):
-        stale.unlink(missing_ok=True)
-
-    warnings: list[str] = []
-    readme_text: str | None = None
-    files = sorted(p for p in business_dir.iterdir() if p.is_file())
-    for p in files:
-        if p.name.lower() == "readme.md":
-            readme_text = nfc(p.read_text(encoding="utf-8-sig"))
-
-    tables: list[TableInfo] = []
-    date_bounds: list[tuple[date, date]] = []
-    con = duckdb.connect(str(db_path), config=DUCKDB_SAFE_CONFIG)
-    try:
-        used_table_names: list[str] = []
-        for path in files:
-            suffix = path.suffix.lower()
-            if suffix in _UNSUPPORTED:
-                warnings.append(f"W_UNSUPPORTED_FILE {path.name}")
-                continue
-            if suffix != ".csv":
-                continue
-            header, rows = read_csv(path)
-            if not header:
-                warnings.append(f"W_EMPTY_FILE {path.name}")
-                continue
-            table = _unique(used_table_names + [to_identifier(path.stem)])[-1]
-            used_table_names.append(table)
-            cols = _unique([to_identifier(h) for h in header])
-            types = [infer_column_type([r[i] for r in rows]) for i in range(len(header))]
-            ddl = ", ".join(f"{_q(c)} {t}" for c, t in zip(cols, types, strict=True))
-            con.execute(f"CREATE TABLE {_q(table)} ({ddl})")
-            if rows:
-                placeholders = ", ".join("?" for _ in cols)
-                con.executemany(
-                    f"INSERT INTO {_q(table)} VALUES ({placeholders})",
-                    [[convert(v, t) for v, t in zip(r, types, strict=True)] for r in rows],
-                )
-            infos = [
-                _profile_column(con, table, c, nfc(h), t)
-                for c, h, t in zip(cols, header, types, strict=True)
-            ]
-            for info in infos:
-                if info.sql_type == "DATE" and info.min is not None:
-                    date_bounds.append((date.fromisoformat(info.min), date.fromisoformat(info.max)))
-            tables.append(TableInfo(name=table, source_file=path.name, row_count=len(rows),
-                                    columns=infos))
-        con.execute("CHECKPOINT")
-    finally:
-        con.close()
-
-    data_range = (
-        DateRange(start=min(b[0] for b in date_bounds), end=max(b[1] for b in date_bounds))
-        if date_bounds else None
+    clean = re.sub(r"[^A-Za-z0-9_-]", "_", business_id) or "business"
+    return (
+        clean
+        if clean == business_id
+        else clean + "_" + hashlib.sha256(business_id.encode()).hexdigest()[:12]
     )
-    card = render_schema_card(tables, data_range, warnings)
+
+
+def catalog_from_artifact(artifact: dict, database: Path, *, setup_ms: int = 0) -> BusinessCatalog:
+    tables = []
+    for table in artifact["tables"]:
+        columns = []
+        declared = {row[1]: row[2] for row in table["source_details"].get("declared_columns", [])}
+        for column in table["columns"]:
+            note = column.get("format_note")
+            if column["original_name"] in declared:
+                note = ";".join(filter(None, ["sqlite:" + declared[column["original_name"]], note]))
+            columns.append(
+                ColumnInfo(
+                    **{
+                        key: column[key]
+                        for key in (
+                            "name",
+                            "original_name",
+                            "sql_type",
+                            "null_count",
+                            "distinct_count",
+                            "min",
+                            "max",
+                            "top_values",
+                            "semantic_hint",
+                            "null_rate",
+                            "raw_column",
+                            "parse_rate",
+                            "status_column",
+                            "unit_column",
+                            "observed_units",
+                        )
+                    },
+                    format_note=note,
+                )
+            )
+        indices = table.get("dropped_source_indices", {})
+        dropped = DroppedRows(
+            total_rows=sum(len(v) for v in indices.values()),
+            note_rows=len(indices.get("note", [])),
+            blank_rows=len(indices.get("blank", [])),
+            summary_rows=len(indices.get("summary", [])),
+            source_indices=indices,
+        )
+        tables.append(
+            TableInfo(
+                name=table["name"],
+                source_file=table["source_file"],
+                source_part=table["source_part"],
+                row_count=table["row_count"],
+                columns=columns,
+                candidate_keys=table["candidate_keys"],
+                dropped_rows=dropped,
+                source_details=table["source_details"],
+            )
+        )
+    joins = [
+        JoinEdge(
+            left=e["left_table"] + "." + e["left_column"],
+            right=e["right_table"] + "." + e["right_column"],
+            cardinality=e.get("cardinality", "n:1"),
+            match_rate=e["match_rate"],
+        )
+        for e in artifact["joins"]
+    ]
+    dates = [
+        DateColumn(
+            column=r["table"] + "." + r["column"],
+            min=date.fromisoformat(r["start"]),
+            max=date.fromisoformat(r["end"]),
+            included_in_data_range=r["included_in_data_range"],
+            exclusion_reason=r.get("exclusion_reason"),
+        )
+        for r in artifact["date_columns"]
+    ]
+    bounds = DateRange(**artifact["data_range"]) if artifact["data_range"] else None
+    card = render_catalog(artifact)
+    budget = artifact.get("schema_card_budget", {})
     return BusinessCatalog(
-        business_id=business_id,
-        bkey=bkey,
-        db_path=str(db_path),
+        business_id=artifact["business_id"],
+        bkey=business_key(artifact["business_id"]),
+        db_path=str(database.resolve()),
+        tables=tables,
+        joins=joins,
+        date_columns=dates,
+        data_range=bounds,
+        readme_text=artifact["readme_text"],
+        schema_card=card,
+        schema_card_sha256=hashlib.sha256(card.encode()).hexdigest(),
+        warnings=artifact["warnings"],
+        setup_ms=setup_ms,
+        status=artifact["status"],
+        schema_card_budget_verified=budget.get("budget_verified", False),
+        schema_card_needs_subset=bool(budget.get("needs_relevant_subset")),
+    )
+
+
+def catalog_artifact(catalog: BusinessCatalog) -> dict:
+    tables = []
+    for table in catalog.tables:
+        columns = []
+        for column in table.columns:
+            data = column.model_dump()
+            data["top_values"] = [[v.value, v.count] for v in column.top_values]
+            columns.append(data)
+        tables.append({**table.model_dump(), "columns": columns})
+    return {
+        "tables": tables,
+        "joins": [
+            dict(
+                left_table=e.left.rsplit(".", 1)[0],
+                left_column=e.left.rsplit(".", 1)[1],
+                right_table=e.right.rsplit(".", 1)[0],
+                right_column=e.right.rsplit(".", 1)[1],
+                match_rate=e.match_rate,
+            )
+            for e in catalog.joins
+        ],
+        "date_columns": [
+            dict(
+                table=d.column.rsplit(".", 1)[0],
+                column=d.column.rsplit(".", 1)[1],
+                start=d.min.isoformat(),
+                end=d.max.isoformat(),
+                included_in_data_range=d.included_in_data_range,
+                exclusion_reason=d.exclusion_reason,
+            )
+            for d in catalog.date_columns
+        ],
+        "warnings": [str(w) for w in catalog.warnings],
+        "low_cardinality_max": 50,
+        "views": [
+            {"name": v.name, "purpose": v.purpose, "ddl": v.ddl} for v in catalog.views if v.enabled
+        ],
+    }
+
+
+def render_schema_card(
+    tables: list[TableInfo], data_range: DateRange | None = None, warnings: list | None = None
+) -> str:
+    temporary = BusinessCatalog(
+        business_id="",
+        bkey="",
+        db_path="",
         tables=tables,
         data_range=data_range,
-        readme_text=readme_text,
-        schema_card=card,
-        schema_card_sha256=hashlib.sha256(card.encode("utf-8")).hexdigest(),
-        warnings=warnings,
-        status="ready" if tables else "failed",
+        readme_text=None,
+        schema_card="",
+        schema_card_sha256="",
+        warnings=warnings or [],
     )
+    text = render_catalog(catalog_artifact(temporary))
+    if data_range is not None:
+        lines = text.splitlines()
+        index = next((i for i, line in enumerate(lines) if line.startswith("WARN ")), len(lines))
+        lines.insert(index, f"DATES {data_range.start.isoformat()}..{data_range.end.isoformat()}")
+        text = "\n".join(lines) + "\n"
+    return text
+
+
+def refresh_catalog_coverage(catalog: BusinessCatalog) -> BusinessCatalog:
+    dates, bounds = catalog_date_range(catalog_artifact(catalog)["tables"])
+    columns = [
+        DateColumn(
+            column=r["table"] + "." + r["column"],
+            min=date.fromisoformat(r["start"]),
+            max=date.fromisoformat(r["end"]),
+            included_in_data_range=r["included_in_data_range"],
+            exclusion_reason=r.get("exclusion_reason"),
+        )
+        for r in dates
+    ]
+    updated = catalog.model_copy(
+        update={"date_columns": columns, "data_range": DateRange(**bounds) if bounds else None}
+    )
+    card = render_catalog(catalog_artifact(updated))
+    return updated.model_copy(
+        update={
+            "schema_card": card,
+            "schema_card_sha256": hashlib.sha256(card.encode()).hexdigest(),
+        }
+    )
+
+
+def setup_business(
+    business_dir: Path, business_id: str, cfg: RunConfig | Path | str, *, tokenizer=None
+) -> BusinessCatalog:
+    """Accept RunConfig, or the legacy work-dir argument; return failed catalogs on setup errors."""
+    started = time.monotonic()
+    runtime = cfg if isinstance(cfg, RunConfig) else RunConfig(work_dir=str(cfg))
+    destination = Path(runtime.work_dir) / "biz" / business_key(business_id)
+    if destination.resolve().is_relative_to(business_dir.resolve()):
+        raise ValueError("Scratch must be outside input")
+    config = DataConfig(
+        **runtime.ingest.model_dump(),
+        schema_card_budget_tokens=runtime.solver.schema_card_budget_tokens,
+    )
+    try:
+        artifact = build_business_database(
+            business_dir, business_id, destination, config, tokenizer
+        )
+        result = catalog_from_artifact(
+            artifact,
+            destination / "catalog.duckdb",
+            setup_ms=int((time.monotonic() - started) * 1000),
+        )
+        save_catalog(result, destination / "business_catalog.json")
+        return result
+    except Exception as error:
+        return BusinessCatalog(
+            business_id=business_id,
+            bkey=business_key(business_id),
+            db_path=str(destination / "catalog.duckdb"),
+            tables=[],
+            data_range=None,
+            readme_text=None,
+            schema_card="",
+            schema_card_sha256=hashlib.sha256(b"").hexdigest(),
+            warnings=[f"E_BUSINESS_SETUP {type(error).__name__}: {error}"],
+            status="failed",
+            setup_ms=int((time.monotonic() - started) * 1000),
+        )

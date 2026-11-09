@@ -2,7 +2,7 @@
 
 An offline agent that answers Vietnamese questions over business CSV/Excel/SQLite data, or reports `unanswerable` / `abstain`. Competition requirements: [`docs/COMPETITION_BRIEF.md`](docs/COMPETITION_BRIEF.md). Technical design: [`docs/SPEC.md`](docs/SPEC.md) (see §18 for what the current code implements and defers). Backlog: [`docs/TASKS.md`](docs/TASKS.md). Workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-> **Status (2026-11-07): bootstrap.** The pipeline runs end to end on CPU **only on a synthetic fixture with a scripted (development-only) model client**. There is no real model client, no Excel/SQLite ingestion, and no Docker image yet. Fixture results are plumbing checks, not competition accuracy.
+> **Status (2026-11-09): M1 ingestion implemented.** CSV/Excel/SQLite ingestion, runtime catalogs, fake catalogs, lexicon and optional entity/semantic APIs are available. Training ingestion was verified on 30 businesses; see [`docs/M1_IMPLEMENTATION.md`](docs/M1_IMPLEMENTATION.md). Model inference remains a development-only scripted fixture path; the production HTTP client and Docker image are still pending.
 
 ## Setup (CPU, no GPU, no model weights, no network at run time)
 
@@ -58,14 +58,14 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 
 | Package | Owner | Role | Bootstrap state |
 |---|---|---|---|
-| `contracts/` | Lead | Shared types, reason codes, exact JSON | 0.1.0, P1 subset |
+| `contracts/` | Lead | Shared types, reason codes, exact JSON | 0.2.0, M1 boundary expansion |
 | `eval/` | Lead | Scorer (`python -m datamate.eval.score`); harness later | scorer |
-| `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | fixture CSV only (UTF-8, ISO dates, plain numbers) |
+| `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | CSV/TSV/Excel/SQLite, typed/raw catalog, profiles and candidate joins |
 | `rules/`, `temporal/`, `decision/`, `formatting/` | M2 | Rulebook, time windows, gate, wire values | generic time params; P1 resolver subset |
 | `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | `ScriptedModelClient` only; in-process executor |
 | `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | sequential; no serving, no image |
 
-Planned packages, created only when their task starts: `entities/` (M1-12, P2), `semantics/` (M1-13, P2), `llm/http.py` (M3-02), `llm/replay.py` (M3-13), `llm/replicas.py` (M4-03), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
+Planned packages, created only when their task starts: `llm/http.py` (M3-02), `llm/replay.py` (M3-13), `llm/replicas.py` (M4-03), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
 
 ## Configuration
 
@@ -76,10 +76,15 @@ One JSON file; unknown keys are errors; missing keys take defaults from `src/dat
 | `work_dir` | `/tmp/datamate` | Scratch for per-business DuckDB files (never under the data dir) |
 | `model.backend` | `http` | `scripted` (dev only) or `http` (TASKS M3-02, not implemented) |
 | `model.script_path` | `null` | Scripted responses (JSONL) for the dev backend |
-| `model.max_tokens` | parse 1024, solve/repair 2048 | Per-stage limits |
+| `model.max_tokens` | parse 1024, solve/repair 2048, compile 4096 | Per-stage limits |
 | `solver.max_repairs` | 1 | Repair turns after a failed SQL attempt |
 | `exec_limits.sql_timeout_s` / `max_result_rows` / `memory_limit_mb` | 20 / 1000 / 4096 | Executor limits |
 | `decision.zero_coverage` | `unanswerable` | What to emit when a period has no data (rulebook §7) |
+| `ingest.*` | accept rates 0.98; scan 20; low-cardinality 50; top values 30; max file 2048 MB | Runtime reader/profile limits; see M1 handoff |
+| `solver.schema_card_budget_tokens` | 8000 | Exact-tokenizer SchemaCard budget when a tokenizer is supplied |
+| `features.entity_linker` / `features.compiled_views` | false / false | P2 switches; real accuracy gates deferred until M3 |
+| `features.compiled_views_categories` | null | Optional category allowlist for semantic views |
+| `entities.*` | top-k 5; weak 70; strong 85; max distinct 100000 | Deterministic fuzzy entity matching |
 | `formatting.rounding` / `money_decimals` / `default_decimals` | `ROUND_HALF_UP` / 0 / 2 | Money → whole VND; percents and other measures → 2 decimals |
 
 ## Repository layout

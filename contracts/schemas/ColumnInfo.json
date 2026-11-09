@@ -1,0 +1,190 @@
+{
+  "$defs": {
+    "TopValue": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "count"
+      ],
+      "title": "TopValue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "distinct_count": {
+      "minimum": 0,
+      "title": "Distinct Count",
+      "type": "integer"
+    },
+    "format_note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Format Note"
+    },
+    "max": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max"
+    },
+    "min": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Min"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "null_count": {
+      "minimum": 0,
+      "title": "Null Count",
+      "type": "integer"
+    },
+    "null_rate": {
+      "default": 0,
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Null Rate",
+      "type": "number"
+    },
+    "observed_units": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Observed Units",
+      "type": "array"
+    },
+    "original_name": {
+      "title": "Original Name",
+      "type": "string"
+    },
+    "parse_rate": {
+      "default": 1,
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Parse Rate",
+      "type": "number"
+    },
+    "raw_column": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Raw Column"
+    },
+    "semantic_hint": {
+      "anyOf": [
+        {
+          "enum": [
+            "money",
+            "quantity",
+            "percent",
+            "code",
+            "name",
+            "status",
+            "date"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Semantic Hint"
+    },
+    "sql_type": {
+      "enum": [
+        "BIGINT",
+        "DECIMAL(38,6)",
+        "DOUBLE",
+        "VARCHAR",
+        "DATE",
+        "TIMESTAMP",
+        "BOOLEAN"
+      ],
+      "title": "Sql Type",
+      "type": "string"
+    },
+    "status_column": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status Column"
+    },
+    "top_values": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/TopValue"
+      },
+      "title": "Top Values",
+      "type": "array"
+    },
+    "unit_column": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Unit Column"
+    }
+  },
+  "required": [
+    "name",
+    "original_name",
+    "sql_type",
+    "null_count",
+    "distinct_count"
+  ],
+  "title": "ColumnInfo",
+  "type": "object"
+}

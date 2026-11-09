@@ -1,0 +1,13 @@
+{
+  "W_DATE_ASSUMED_DMY": "tests/m1/test_warning_fixtures.py::test_parse_ambiguity_and_retention_warning_classes",
+  "W_DATE_RETAINED_TEXT": "tests/m1/test_warning_fixtures.py::test_parse_ambiguity_and_retention_warning_classes",
+  "W_DATE_AMBIGUOUS": "tests/m1/test_warning_fixtures.py::test_parse_ambiguity_and_retention_warning_classes",
+  "W_NUMERIC_AMBIGUOUS": "tests/m1/test_warning_fixtures.py::test_parse_ambiguity_and_retention_warning_classes",
+  "W_NUMERIC_RETAINED_TEXT": "tests/m1/test_warning_fixtures.py::test_parse_ambiguity_and_retention_warning_classes",
+  "W_NOTE_ROW_DROPPED": "tests/m1/test_warning_fixtures.py::test_committed_reader_fixtures_and_total_note_ordinals",
+  "W_TOTAL_ROW_DROPPED": "tests/m1/test_warning_fixtures.py::test_committed_reader_fixtures_and_total_note_ordinals",
+  "W_ENCODING_DETECTED": "tests/m1/test_warning_fixtures.py::test_committed_reader_fixtures_and_total_note_ordinals",
+  "W_ENCODING_CP1258_EVIDENCE": "tests/m1/test_warning_fixtures.py::test_committed_reader_fixtures_and_total_note_ordinals",
+  "W_ENCODING_FALLBACK": "tests/m1/test_warning_fixtures.py::test_encoding_fallback_has_explicit_warning",
+  "W_READER_FALLBACK": "tests/m1/test_warning_fixtures.py::test_forced_excel_fallback_preserves_native_types"
+}

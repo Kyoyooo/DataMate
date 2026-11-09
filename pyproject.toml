@@ -15,6 +15,11 @@ license-files = ["LICENSE"]
 dependencies = [
     "duckdb>=1.1,<2",
     "pydantic>=2.7,<3",
+    "pyarrow>=18,<26",
+    "python-calamine>=0.3,<1",
+    "openpyxl>=3.1.5,<4",
+    "charset-normalizer>=3.4,<4",
+    "rapidfuzz>=3.10,<4",
 ]
 
 [project.optional-dependencies]
@@ -22,6 +27,9 @@ dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"datamate.lexicon" = ["*.tsv"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

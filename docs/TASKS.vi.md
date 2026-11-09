@@ -50,20 +50,20 @@
 
 | ID | Nhiệm vụ | Ph | Est | Due | Phụ thuộc | Rev | Hoàn tất khi | Trạng thái |
 |---|---|---|---|---|---|---|---|---|
-| M1-01 | Kiểm tra training split; báo cáo dữ liệu; bộ fixture v0 | P1 | 4 | 11-07 | — | L | Báo cáo liệt kê loại/kích thước file, cấu trúc sheet, định dạng số/ngày, chất lượng README; fixture dưới `tests/fixtures/businesses/` bao phủ mọi quy tắc SPEC §7.2 | Todo |
-| M1-02 | `fold()`, chuẩn hóa NFC/khoảng trắng, lexicon viết tắt v0 | P1 | 4 | 11-07 | L-04 | M2 | SPEC §7.6.1, chuẩn hóa §7.4; lexicon bao phủ viết tắt gặp trong câu hỏi training | Todo |
-| M1-03 | CSV reader: phát hiện encoding, nhận diện dialect | P1 | 3 | 11-07 | L-04 | M3 | SPEC §7.2.2; fixture cp1258 và UTF-8-SIG pass | Todo |
-| M1-04 | Excel reader (calamine, mọi sheet, fallback openpyxl) | P1 | 3 | 11-07 | L-04 | M3 | Phần đọc ở SPEC §7.2.3; bảo toàn kiểu ô gốc | Todo |
-| M1-05 | SQLite reader (stdlib, `mode=ro&immutable=1`) | P1 | 2 | 11-07 | L-04 | M4 | SPEC §7.2.4; đọc fixture WAL-mode trong thư mục read-only không phát sinh ghi; không DuckDB extension (SC-3) | Todo |
-| M1-06 | Parse số: null token, tiền tệ, hậu tố, dạng ghép, biểu quyết quy ước theo cột, kiểu SQL chính xác | P1 | 5 | 11-07 | L-04 | M2 | SPEC §7.2.5; fixture `1.250.000`, `1,5`, `150k`, `1tr2`, `12,5%`; cột mơ hồ giữ VARCHAR kèm cảnh báo | Todo |
-| M1-07 | Parse ngày: định dạng, bằng chứng DMY/MDY, Excel serial, cột tháng | P1 | 4 | 11-08 | M1-06 | M2 | SPEC §7.2.6; fixture mơ hồ `01/02/2025` hoạt động đúng đặc tả | Todo |
-| M1-08 | Phát hiện block, header, dòng tổng, dòng ghi chú trong Excel | P1 | 5 | 11-08 | M1-04 | M3 | Quy tắc SPEC §7.2.3; fixture dòng tiêu đề, header gộp, hai block, tổng, ghi chú đều pass | Todo |
-| M1-09 | Identifier (SC-2) và materialization DuckDB | P1 | 3 | 11-08 | M1-02–M1-06 | M3 | SPEC §7.2.7, §7.2.10; tắt tự động cài/load extension; mở lại file ở read-only được | Todo |
-| M1-10 | Profiling, key, join, độ phủ ngày, render SchemaCard và ngân sách token | P1 | 5 | 11-08 | M1-09, M3-03 | M3 | SPEC §7.2.8–7.2.9; SchemaCard giống từng byte qua các lần setup; XLSX 300k dòng ≤ 60 giây | Todo |
-| M1-11 | **Catalog fake cho thành viên khác**: builder `make_fake_catalog()` và 3 fixture catalog dựng sẵn (DuckDB + `BusinessCatalog`) | COL | 2 | **11-07** | L-04 | M3 | Công bố trong `tests/fixtures/catalogs/`; M2/M3/M4 có thể build và query catalog mà không cần mã ingestion thật (SPEC §14.4) | Todo |
-| M1-12 | Entity linker: index, fuzzy query, xếp hạng | P2 | 8 | 11-11 | M1-10, M1-02 | M3 | SPEC §7.6; thứ tự toàn phần; giá trị đúng như lưu trữ; PA held-out với switch bật/tắt | Todo |
-| M1-13 | Semantic compiler và xác thực view (DEC-4) | P2 | 6 | 11-11 | M1-10, M3-02 | M2 | SPEC §7.3; vô hiệu hóa và log view lỗi; PA held-out có/không tính năng theo category | Todo |
-| M1-14 | Sửa ingestion từ các lần chạy đầy đủ; bổ sung fixture còn thiếu | INT | 10 | Liên tục đến 11-13 | L-06 | M3 | Mọi nhóm cảnh báo ingestion gặp trong training có fixture; không setup failure trên training split | Todo |
+| M1-01 | Kiểm tra training split; báo cáo dữ liệu; bộ fixture v0 | P1 | 4 | 11-07 | — | L | Báo cáo liệt kê loại/kích thước file, cấu trúc sheet, định dạng số/ngày, chất lượng README; fixture dưới `tests/fixtures/businesses/` bao phủ mọi quy tắc SPEC §7.2 | Review |
+| M1-02 | `fold()`, chuẩn hóa NFC/khoảng trắng, lexicon viết tắt v0 | P1 | 4 | 11-07 | L-04 | M2 | SPEC §7.6.1, chuẩn hóa §7.4; lexicon bao phủ viết tắt gặp trong câu hỏi training | Review |
+| M1-03 | CSV reader: phát hiện encoding, nhận diện dialect | P1 | 3 | 11-07 | L-04 | M3 | SPEC §7.2.2; fixture cp1258 và UTF-8-SIG pass | Review |
+| M1-04 | Excel reader (calamine, mọi sheet, fallback openpyxl) | P1 | 3 | 11-07 | L-04 | M3 | Phần đọc ở SPEC §7.2.3; bảo toàn kiểu ô gốc | Review |
+| M1-05 | SQLite reader (stdlib, `mode=ro&immutable=1`) | P1 | 2 | 11-07 | L-04 | M4 | SPEC §7.2.4; đọc fixture WAL-mode trong thư mục read-only không phát sinh ghi; không DuckDB extension (SC-3) | Partial |
+| M1-06 | Parse số: null token, tiền tệ, hậu tố, dạng ghép, biểu quyết quy ước theo cột, kiểu SQL chính xác | P1 | 5 | 11-07 | L-04 | M2 | SPEC §7.2.5; fixture `1.250.000`, `1,5`, `150k`, `1tr2`, `12,5%`; cột mơ hồ giữ VARCHAR kèm cảnh báo | Review |
+| M1-07 | Parse ngày: định dạng, bằng chứng DMY/MDY, Excel serial, cột tháng | P1 | 4 | 11-08 | M1-06 | M2 | SPEC §7.2.6; fixture mơ hồ `01/02/2025` hoạt động đúng đặc tả | Review |
+| M1-08 | Phát hiện block, header, dòng tổng, dòng ghi chú trong Excel | P1 | 5 | 11-08 | M1-04 | M3 | Quy tắc SPEC §7.2.3; fixture dòng tiêu đề, header gộp, hai block, tổng, ghi chú đều pass | Review |
+| M1-09 | Identifier (SC-2) và materialization DuckDB | P1 | 3 | 11-08 | M1-02–M1-06 | M3 | SPEC §7.2.7, §7.2.10; tắt tự động cài/load extension; mở lại file ở read-only được | Review |
+| M1-10 | Profiling, key, join, độ phủ ngày, render SchemaCard và ngân sách token | P1 | 5 | 11-08 | M1-09, M3-03 | M3 | SPEC §7.2.8–7.2.9; SchemaCard giống từng byte qua các lần setup; XLSX 300k dòng ≤ 60 giây | Partial |
+| M1-11 | **Catalog fake cho thành viên khác**: builder `make_fake_catalog()` và 3 fixture catalog dựng sẵn (DuckDB + `BusinessCatalog`) | COL | 2 | **11-07** | L-04 | M3 | Công bố trong `tests/fixtures/catalogs/`; M2/M3/M4 có thể build và query catalog mà không cần mã ingestion thật (SPEC §14.4) | Review |
+| M1-12 | Entity linker: index, fuzzy query, xếp hạng | P2 | 8 | 11-11 | M1-10, M1-02 | M3 | SPEC §7.6; thứ tự toàn phần; giá trị đúng như lưu trữ; PA held-out với switch bật/tắt | Partial |
+| M1-13 | Semantic compiler và xác thực view (DEC-4) | P2 | 6 | 11-11 | M1-10, M3-02 | M2 | SPEC §7.3; vô hiệu hóa và log view lỗi; PA held-out có/không tính năng theo category | Partial |
+| M1-14 | Sửa ingestion từ các lần chạy đầy đủ; bổ sung fixture còn thiếu | INT | 10 | Liên tục đến 11-13 | L-06 | M3 | Mọi nhóm cảnh báo ingestion gặp trong training có fixture; không setup failure trên training split | Review |
 
 ---
 
@@ -212,3 +212,5 @@ Mới trong v1.1: L-19, L-20, M1-11.
 | X-02 | Entity linking dựa trên embedding | Ngân sách tham số; lexical linking trước (AP §8.3) |
 | X-03 | Giải bài ở thinking mode với ngân sách giới hạn (DEC-10) | Chi phí runtime và tái lập; chỉ dùng nếu bake-off cho thấy cải thiện |
 | X-04 | Luồng serving TP=2 | Chỉ dự phòng (DEC-13) |
+
+M1 implementation/evidence: see `M1_IMPLEMENTATION.md`. P2 accuracy gates remain deferred until M3; `Review` is not a claim of merge approval.

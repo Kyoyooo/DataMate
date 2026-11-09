@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+.venv-*/
 venv/
 .pytest_cache/
 .ruff_cache/
@@ -11,6 +12,7 @@ dist/
 
 # Competition data and archives: never commit (large; public test must not be redistributed)
 /train/
+/data/
 /public_test/
 /private_test/
 *.zip
@@ -32,3 +34,5 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+/notebooks/

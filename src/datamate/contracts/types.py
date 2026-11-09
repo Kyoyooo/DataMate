@@ -19,7 +19,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "0.1.0"  # pre-1.0: P1 bootstrap subset of SPEC §5
+CONTRACTS_VERSION = "0.2.0"  # M1 catalog/entity/semantics expansion; legacy fields remain accepted.
 
 
 class Contract(BaseModel):
@@ -30,7 +30,7 @@ AnswerType = Literal["number", "percent", "string", "date", "boolean", "list", "
 DecisionKind = Literal["answer", "unanswerable", "abstain"]
 DateGranularity = Literal["day", "month"]
 Granularity = Literal["day", "week", "month", "quarter", "year", "range"]
-Stage = Literal["parse", "solve", "repair"]
+Stage = Literal["parse", "solve", "repair", "compile", "rule_profile"]
 # How a number is rounded on the wire (design correction DC-1, see SPEC §18).
 NumericKind = Literal["money", "count", "measure"]
 # Ranked list (sorted by the formatter) vs. list in the order the question gives (DC-2).
@@ -87,25 +87,115 @@ class DateRange(Contract):
         return self
 
 
-class ColumnInfo(Contract):
+class M1Contract(Contract):
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+
+class TopValue(M1Contract):
+    value: str
+    count: int = Field(ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_pair(cls, value):
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return {"value": value[0], "count": value[1]}
+        return value
+
+    def __iter__(self):
+        yield self.value
+        yield self.count
+
+
+class CatalogWarning(M1Contract):
+    code: str
+    detail: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_text(cls, value):
+        if isinstance(value, str):
+            code, _, detail = value.partition(" ")
+            return {"code": code, "detail": detail}
+        return value
+
+    def __str__(self):
+        return self.code + (" " + self.detail if self.detail else "")
+
+
+class DroppedRows(M1Contract):
+    total_rows: int = 0
+    note_rows: int = 0
+    blank_rows: int = 0
+    summary_rows: int = 0
+    source_indices: dict[str, list[int]] = {}
+
+
+class JoinEdge(M1Contract):
+    left: str
+    right: str
+    cardinality: Literal["n:1", "1:1", "n:n"]
+    match_rate: float = Field(ge=0, le=1)
+
+
+class DateColumn(M1Contract):
+    column: str
+    min: date
+    max: date
+    included_in_data_range: bool = True
+    exclusion_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _ordered(self):
+        if self.min > self.max:
+            raise ValueError("Date column minimum exceeds maximum")
+        return self
+
+
+class ColumnInfo(M1Contract):
     name: str  # SQL identifier (ASCII, folded; SPEC SC-2)
     original_name: str  # header exactly as found
-    sql_type: str  # BIGINT | DECIMAL(38,6) | DATE | VARCHAR
-    null_count: int
-    distinct_count: int
+    sql_type: Literal[
+        "BIGINT", "DECIMAL(38,6)", "DOUBLE", "VARCHAR", "DATE", "TIMESTAMP", "BOOLEAN"
+    ]
+    null_count: int = Field(ge=0)
+    distinct_count: int = Field(ge=0)
     min: str | None = None
     max: str | None = None
-    top_values: list[tuple[str, int]] = []  # only for low-cardinality text columns
+    top_values: list[TopValue] = []
+    semantic_hint: (
+        Literal["money", "quantity", "percent", "code", "name", "status", "date"] | None
+    ) = None
+    null_rate: float = Field(default=0, ge=0, le=1)
+    raw_column: str | None = None
+    parse_rate: float = Field(default=1, ge=0, le=1)
+    format_note: str | None = None
+    status_column: str | None = None
+    unit_column: str | None = None
+    observed_units: list[str] = []
 
 
-class TableInfo(Contract):
+class TableInfo(M1Contract):
     name: str
     source_file: str  # relative to the business directory
-    row_count: int
+    row_count: int = Field(ge=0)
     columns: list[ColumnInfo]
+    source_part: str | None = None
+    candidate_keys: list[list[str]] = []
+    dropped_rows: DroppedRows = DroppedRows()
+    source_details: dict[str, Any] = {}
+
+    @model_validator(mode="after")
+    def _keys_exist(self):
+        names = {column.name for column in self.columns}
+        if len(names) != len(self.columns) or any(
+            not key or not set(key) <= names for key in self.candidate_keys
+        ):
+            raise ValueError("Duplicate columns or invalid candidate key")
+        return self
 
 
-class BusinessCatalog(Contract):
+class BusinessCatalog(M1Contract):
     business_id: str
     bkey: str
     db_path: str
@@ -114,8 +204,16 @@ class BusinessCatalog(Contract):
     readme_text: str | None
     schema_card: str
     schema_card_sha256: str
-    warnings: list[str] = []
+    warnings: list[CatalogWarning] = []
     status: Literal["ready", "failed"] = "ready"
+    joins: list[JoinEdge] = []
+    date_columns: list[DateColumn] = []
+    setup_ms: int = Field(default=0, ge=0)
+    schema_card_budget_verified: bool = False
+    schema_card_needs_subset: bool = False
+    views: list[ViewSpec] = []
+    compile_calls: list[ModelCall] = []
+    semantic_annotations: SemanticAnnotations | None = None
 
 
 # --------------------------------------------------------------------------- question level
@@ -196,6 +294,23 @@ class Answerability(Contract):
     missing_fields: list[str] = []
 
 
+class Mention(M1Contract):
+    text: str
+    kind: Literal[
+        "product", "category", "customer", "supplier", "employee", "store", "channel", "other"
+    ] = "other"
+
+
+class EntityCandidate(M1Contract):
+    mention: str
+    table: str
+    column: str
+    value: str
+    code: str | None = None
+    score: float = Field(ge=0, le=100)
+    strength: Literal["strong", "weak"]
+
+
 class QuestionFrame(Contract):
     """Structured reading of a question, produced by the model (SPEC §5.7, C4)."""
 
@@ -207,6 +322,7 @@ class QuestionFrame(Contract):
     ranking: RankingSpec | None = None  # required iff list_order == "ranked"
     time: list[TimeRef] = Field(default=[], max_length=4)
     answerability: Answerability = Answerability()
+    mentions: list[Mention] = Field(default=[], max_length=30)
 
     @model_validator(mode="after")
     def _invariants(self) -> QuestionFrame:
@@ -257,6 +373,50 @@ class ModelCall(Contract):
     error: str | None = None
 
 
+class ViewCheck(M1Contract):
+    name: str
+    passed: bool
+    detail: str = ""
+
+
+class ViewValidation(M1Contract):
+    executed: bool = False
+    row_count: int = 0
+    checks: list[ViewCheck] = []
+
+
+class ViewSpec(M1Contract):
+    name: str = Field(pattern=r"^v_[a-z][a-z0-9_]*$")
+    purpose: str
+    ddl: str
+    depends_on: list[str] = []
+    category: str = "other"
+    key_columns: list[str] = []
+    exclusion_check: dict[str, str] | None = None
+    validation: ViewValidation = ViewValidation()
+    enabled: bool = False
+
+
+class TableRole(M1Contract):
+    role: Literal["fact", "dimension", "lookup", "log", "other"]
+    grain: str
+
+
+class ValueSemantic(M1Contract):
+    column: str
+    value: str
+    meaning: str
+
+
+class SemanticAnnotations(M1Contract):
+    table_roles: dict[str, TableRole] = {}
+    value_semantics: list[ValueSemantic] = []
+    join_paths: list[JoinEdge] = []
+    views: list[ViewSpec] = Field(default=[], max_length=8)
+    compile_calls: list[ModelCall] = []
+    warnings: list[str] = []
+
+
 class SolverOutput(Contract):
     """Model output for the solve/repair stages (SPEC §7.7.3)."""
 
@@ -287,7 +447,9 @@ class ScalarValue(Contract):
 
     @model_validator(mode="after")
     def _match(self) -> ScalarValue:
-        expected = {"number": Decimal, "percent": Decimal, "string": str, "boolean": bool}[self.type]
+        expected = {"number": Decimal, "percent": Decimal, "string": str, "boolean": bool}[
+            self.type
+        ]
         if type(self.value) is not expected:
             raise ValueError(f"{self.type} value must be {expected.__name__}")
         return self
@@ -386,3 +548,8 @@ class LogRecord(Contract):
     attempts: list[dict[str, Any]] = []
     windows: list[TimeWindow] = []
     decision: dict[str, Any] = {}
+    entities: list[EntityCandidate] = []
+    views_used: list[dict[str, str]] = []
+
+
+BusinessCatalog.model_rebuild()

@@ -1,0 +1,17 @@
+[
+  {
+    "scenario": "sales",
+    "catalog": "tests\\fixtures\\catalogs\\generated\\fake_sales\\catalog.json",
+    "database": "tests\\fixtures\\catalogs\\generated\\fake_sales\\catalog.duckdb"
+  },
+  {
+    "scenario": "mixed_types",
+    "catalog": "tests\\fixtures\\catalogs\\generated\\fake_mixed_types\\catalog.json",
+    "database": "tests\\fixtures\\catalogs\\generated\\fake_mixed_types\\catalog.duckdb"
+  },
+  {
+    "scenario": "missing_fields",
+    "catalog": "tests\\fixtures\\catalogs\\generated\\fake_missing_fields\\catalog.json",
+    "database": "tests\\fixtures\\catalogs\\generated\\fake_missing_fields\\catalog.duckdb"
+  }
+]

@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class _Section(BaseModel):
@@ -30,11 +30,12 @@ class ModelConfig(_Section):
     path: str | None = None  # local model directory (production)
     temperature: float = 0.0
     seed: int = 20261116
-    max_tokens: dict[str, int] = {"parse": 1024, "solve": 2048, "repair": 2048}
+    max_tokens: dict[str, int] = {"parse": 1024, "solve": 2048, "repair": 2048, "compile": 4096}
 
 
 class SolverConfig(_Section):
     max_repairs: int = Field(default=1, ge=0)
+    schema_card_budget_tokens: int = Field(default=8000, ge=1)
 
 
 class ExecLimits(_Section):
@@ -59,6 +60,34 @@ class LoggingConfig(_Section):
     max_output_rows_logged: int = 50
 
 
+class IngestConfig(_Section):
+    numeric_accept_rate: float = Field(default=0.98, gt=0, le=1)
+    date_accept_rate: float = Field(default=0.98, gt=0, le=1)
+    max_header_scan_rows: int = Field(default=20, ge=1)
+    low_cardinality_max: int = Field(default=50, ge=1)
+    top_values_max: int = Field(default=30, ge=1)
+    max_file_mb: int = Field(default=2048, ge=1)
+
+
+class FeatureConfig(_Section):
+    entity_linker: bool = False
+    compiled_views: bool = False
+    compiled_views_categories: list[str] | None = None
+
+
+class EntityConfig(_Section):
+    top_k: int = Field(default=5, ge=1)
+    weak_threshold: float = Field(default=70, ge=0, le=100)
+    strong_threshold: float = Field(default=85, ge=0, le=100)
+    max_distinct_values: int = Field(default=100000, ge=1)
+
+    @model_validator(mode="after")
+    def _thresholds(self):
+        if self.strong_threshold < self.weak_threshold:
+            raise ValueError("strong_threshold must be at least weak_threshold")
+        return self
+
+
 class RunConfig(_Section):
     work_dir: str = "/tmp/datamate"
     model: ModelConfig = ModelConfig()
@@ -67,6 +96,9 @@ class RunConfig(_Section):
     decision: DecisionConfig = DecisionConfig()
     formatting: FormattingConfig = FormattingConfig()
     logging: LoggingConfig = LoggingConfig()
+    ingest: IngestConfig = IngestConfig()
+    features: FeatureConfig = FeatureConfig()
+    entities: EntityConfig = EntityConfig()
 
     def sha256(self) -> str:
         canonical = json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))

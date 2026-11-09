@@ -1,0 +1,99 @@
+{
+  "business_id": "fake_missing_fields",
+  "bkey": "fake_missing_fields",
+  "db_path": "catalog.duckdb",
+  "tables": [
+    {
+      "name": "customers",
+      "source_file": "synthetic:missing_fields",
+      "row_count": 2,
+      "columns": [
+        {
+          "name": "code",
+          "original_name": "code",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "001",
+          "max": "002",
+          "top_values": [
+            {
+              "value": "001",
+              "count": 1
+            },
+            {
+              "value": "002",
+              "count": 1
+            }
+          ],
+          "semantic_hint": "code",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "name",
+          "original_name": "name",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "Anh Tú",
+          "max": "Chị Lan",
+          "top_values": [
+            {
+              "value": "Anh Tú",
+              "count": 1
+            },
+            {
+              "value": "Chị Lan",
+              "count": 1
+            }
+          ],
+          "semantic_hint": "name",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        }
+      ],
+      "source_part": null,
+      "candidate_keys": [
+        [
+          "code"
+        ],
+        [
+          "name"
+        ]
+      ],
+      "dropped_rows": {
+        "total_rows": 0,
+        "note_rows": 0,
+        "blank_rows": 0,
+        "summary_rows": 0,
+        "source_indices": {}
+      },
+      "source_details": {}
+    }
+  ],
+  "data_range": null,
+  "readme_text": "Synthetic customer list. No sale amount, cost or activity date is supplied.",
+  "schema_card": "TABLE customers  (2 rows; source synthetic:missing_fields)\n  code VARCHAR candidate_key nulls 0.00% values: \"001\"(1), \"002\"(1) code [\"code\"]\n  name VARCHAR candidate_key nulls 0.00% values: \"Anh Tú\"(1), \"Chị Lan\"(1) name [\"name\"]\n",
+  "schema_card_sha256": "65554e737a72813df5d9ad900f254eab412aaf89f67365ab7da2a0adc368dac8",
+  "warnings": [],
+  "status": "ready",
+  "joins": [],
+  "date_columns": [],
+  "setup_ms": 0,
+  "schema_card_budget_verified": false,
+  "schema_card_needs_subset": false,
+  "views": [],
+  "compile_calls": [],
+  "semantic_annotations": null
+}

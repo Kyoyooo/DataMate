@@ -1,0 +1,8 @@
+{
+  "readme": "Synthetic sales catalog. Raw amount and status are separate; no business filtering is implied.",
+  "tables": [
+    {"name": "orders", "columns": [["order_id", "VARCHAR", "code"], ["customer_id", "VARCHAR", "code"], ["date", "DATE", "date"], ["amount", "BIGINT", "money"], ["status", "VARCHAR", "status"]], "rows": [["O01", "C01", "2025-01-01", 100, "Hoàn thành"], ["O02", "C02", "2025-01-02", 200, "Đã hủy"], ["O03", "C01", "2025-01-03", 50, "Hoàn thành"]]},
+    {"name": "customers", "columns": [["customer_id", "VARCHAR", "code"], ["name", "VARCHAR", "name"]], "rows": [["C01", "Chị Lan"], ["C02", "Anh Tú"]]}
+  ],
+  "joins": [{"left": "orders.customer_id", "right": "customers.customer_id", "cardinality": "n:1", "match_rate": 1.0}]
+}

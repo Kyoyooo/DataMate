@@ -1,0 +1,36 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "cardinality": {
+      "enum": [
+        "n:1",
+        "1:1",
+        "n:n"
+      ],
+      "title": "Cardinality",
+      "type": "string"
+    },
+    "left": {
+      "title": "Left",
+      "type": "string"
+    },
+    "match_rate": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Match Rate",
+      "type": "number"
+    },
+    "right": {
+      "title": "Right",
+      "type": "string"
+    }
+  },
+  "required": [
+    "left",
+    "right",
+    "cardinality",
+    "match_rate"
+  ],
+  "title": "JoinEdge",
+  "type": "object"
+}
