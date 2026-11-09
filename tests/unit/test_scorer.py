@@ -63,3 +63,20 @@ def test_table_columns_by_name_rows_as_set():
     assert score_one(pred("table", renamed), r) == 1  # by position when names differ
     wrong = {"columns": ["khach_hang", "so_tien_no"], "rows": [["Chị Lan", 3200000]]}
     assert score_one(pred("table", wrong), r) == -1
+
+
+def test_table_row_order_with_overlapping_aliases():
+    reference = ref("table", {"columns": ["Tên", "Số"], "rows": [["Lan", 1], ["L", 1]]},
+                    alias=[["L"], []])
+    for rows in ([["L", 1], ["Lan", 1]], [["Lan", 1], ["L", 1]]):
+        assert score_one(pred("table", {"columns": ["Tên", "Số"], "rows": rows}), reference) == 1
+    assert score_one(pred("table", {"columns": ["Tên", "Số"], "rows": [["Lan", 1], ["Lan", 1]]}),
+                     reference) == -1
+
+
+def test_nonfinite_predictions_are_wrong_and_large_percent_rounding_is_exact():
+    for answer_type in ("number", "percent"):
+        for nonfinite in (Decimal("NaN"), Decimal("Infinity")):
+            assert score_one(pred(answer_type, nonfinite), ref(answer_type, 1)) == -1
+    assert score_one(pred("percent", Decimal("123456789012345678901234567890.125")),
+                     ref("percent", Decimal("123456789012345678901234567890.13"))) == 1
