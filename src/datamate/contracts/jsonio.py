@@ -21,8 +21,7 @@ def _decimal_literal(d: Decimal) -> str:
         raise ValueError(f"non-finite Decimal cannot be serialized: {d}")
     if d == d.to_integral_value():
         return str(int(d))
-    text = format(d.normalize(), "f")
-    return text
+    return format(d, "f").rstrip("0").rstrip(".")
 
 
 def dumps(obj: Any) -> str:
