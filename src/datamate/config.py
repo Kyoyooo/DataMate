@@ -14,8 +14,9 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _Section(BaseModel):
@@ -24,13 +25,38 @@ class _Section(BaseModel):
 
 class ModelConfig(_Section):
     # "scripted" is development-only and is rejected outside --dev (run.py).
-    # "http" is the production client (TASKS M3-02); it is not implemented yet.
+    # Serving is external to the client; M4 owns server launch and health checks.
     backend: Literal["scripted", "http"] = "http"
     script_path: str | None = None  # scripted backend only
     path: str | None = None  # local model directory (production)
-    temperature: float = 0.0
+    base_url: str | None = None  # e.g. http://127.0.0.1:8000/v1; required for http
+    served_model_name: str = Field(default="datamate", min_length=1)
+    model_call_timeout_s: float = Field(default=120.0, gt=0, allow_inf_nan=False)
+    schema_adapter: Literal["timeref.v1", "none"] = "timeref.v1"
+    temperature: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    top_p: float = Field(default=1.0, gt=0, le=1)
+    top_k: int = Field(default=-1, ge=-1)
+    min_p: float = Field(default=0.0, ge=0, le=1)
+    presence_penalty: float = Field(default=0.0, ge=-2, le=2)
+    frequency_penalty: float = Field(default=0.0, ge=-2, le=2)
+    repetition_penalty: float = Field(default=1.0, gt=0, allow_inf_nan=False)
+    enable_thinking: dict[str, bool] = {"parse": False, "solve": False, "repair": False}
     seed: int = 20261116
     max_tokens: dict[str, int] = {"parse": 1024, "solve": 2048, "repair": 2048}
+
+    @field_validator("base_url")
+    @classmethod
+    def _local_endpoint(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlsplit(value)
+        if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "::1", "localhost"}
+                or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment or parsed.path.rstrip("/") not in {"", "/v1"}):
+            raise ValueError("model.base_url must be loopback HTTP, optionally ending in /v1")
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            raise ValueError("model.base_url has an invalid port")
+        return value.rstrip("/")
 
 
 class SolverConfig(_Section):
