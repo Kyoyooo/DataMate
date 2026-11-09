@@ -15,8 +15,9 @@ Lists (DC-2):
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Context, Decimal
 from typing import Any
+from unicodedata import normalize
 
 from datamate.config import FormattingConfig
 from datamate.contracts import (
@@ -39,26 +40,28 @@ def round_number(value: Decimal, numeric_kind: str | None, cfg: FormattingConfig
         raise ValueError(f"cannot format non-finite number {value}")
     places = cfg.money_decimals if (numeric_kind == "money" and not is_percent) \
         else cfg.default_decimals
-    q = value.quantize(Decimal(1).scaleb(-places), rounding=_MODES[cfg.rounding])
+    # DuckDB DECIMAL can exceed Python's default precision. Allow a carry when rounding.
+    context = Context(prec=max(1, value.adjusted() + places + 2), rounding=_MODES[cfg.rounding])
+    q = value.quantize(Decimal((0, (1,), -places)), context=context)
     if q == q.to_integral_value():
         return int(q)  # also turns -0 into 0
-    return q.normalize()
+    return q
 
 
 def _wire_scalar(v: Decimal | str, numeric_kind: str | None, cfg: FormattingConfig) -> Any:
     if isinstance(v, Decimal):
         return round_number(v, numeric_kind, cfg)
-    return v.strip()
+    return normalize("NFC", v.strip())
 
 
 def _tie_key(items: list[ListItem]) -> Any:
     codes_ = [i.tie_code for i in items if i.tie_code is not None]
-    numeric = bool(codes_) and all(c.isdigit() for c in codes_)
+    numeric = bool(codes_) and all(c.isdecimal() for c in codes_)
 
     def key(i: ListItem) -> tuple:
         if i.tie_code is None:
             return (1, 0, "")
-        return (0, int(i.tie_code), "") if numeric else (0, 0, i.tie_code)
+        return (0, Decimal(i.tie_code), "") if numeric else (0, 0, i.tie_code)
 
     return key
 
@@ -71,7 +74,7 @@ def order_ranked(items: list[ListItem], ranking: RankingSpec) -> list[ListItem]:
     tie = _tie_key(items)
     # Stable two-pass sort: secondary order first, then the criterion. Python's
     # sort is stable even with reverse=True, so ties keep code-ascending order.
-    by_tie = sorted(items, key=lambda i: (tie(i), str(i.item)))
+    by_tie = sorted(items, key=lambda i: (tie(i), str(i.item), isinstance(i.item, str)))
     keyed = sorted((i for i in by_tie if i.sort_key is not None), key=lambda i: i.sort_key,
                    reverse=ranking.direction == "top")
     ordered = keyed + [i for i in by_tie if i.sort_key is None]
@@ -89,7 +92,7 @@ def to_submission(question_id: str, d: Decision, ranking: RankingSpec | None,
         if v.type in ("number", "percent"):
             ans: Any = round_number(v.value, v.numeric_kind, cfg, is_percent=v.type == "percent")
         elif v.type == "string":
-            ans = v.value.strip()
+            ans = _wire_scalar(v.value, v.numeric_kind, cfg)
         else:
             ans = v.value
         return SubmissionRecord(id=question_id, type=v.type, answer=ans)
