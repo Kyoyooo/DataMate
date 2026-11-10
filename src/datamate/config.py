@@ -136,6 +136,11 @@ class ExecLimits(_Section):
     sql_timeout_s: float = 20.0
     max_result_rows: int = 1000
     memory_limit_mb: int = 4096
+    # "process": killable spawn worker pool (SPEC §7.8, M3-07); "inprocess": same-process
+    # execution (CPU tests only: a runaway statement cannot be killed).
+    isolation: Literal["process", "inprocess"] = "process"
+    workers: int = Field(default=16, ge=1)  # sandbox_workers
+    kill_grace_s: float = Field(default=2.0, ge=0)  # parent kills a worker this long after the timeout
 
 
 class DecisionConfig(_Section):

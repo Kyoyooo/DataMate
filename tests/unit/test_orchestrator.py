@@ -232,7 +232,7 @@ def test_managed_serving_end_to_end_with_fake_servers(tmp_path):
             "serving": {"mode": "managed", "replicas": 2, "base_port": free_port(),
                         "vllm_command": [sys.executable, FAKE], "startup_timeout_s": 20,
                         "health_poll_interval_s": 0.05, "shutdown_timeout_s": 5},
-            "concurrency": {"questions_per_replica": 2}, "solver": {"tokenizer": "estimate"}}
+            "concurrency": {"questions_per_replica": 2}, "solver": {"tokenizer": "estimate"}, "exec_limits": {"workers": 2}}
     (tmp_path / "cfg.json").write_text(json.dumps(conf))
     out = tmp_path / "out"
     assert main(["--config", str(tmp_path / "cfg.json"), "--data-dir", str(SPLIT),
@@ -262,7 +262,7 @@ def test_managed_serving_unstartable_replicas_still_deliver_all_abstain(tmp_path
     (tmp_path / "cfg.json").write_text(json.dumps({
         "work_dir": str(tmp_path / "w"), "model": {"path": str(model_dir)},
         "serving": {"mode": "managed", "vllm_command": ["/nonexistent/vllm"]},
-        "solver": {"tokenizer": "estimate"}}))
+        "solver": {"tokenizer": "estimate"}, "exec_limits": {"workers": 2}}))
     out = tmp_path / "out"
     assert main(["--config", str(tmp_path / "cfg.json"), "--data-dir", str(SPLIT),
                  "--result-dir", str(out)]) == 0

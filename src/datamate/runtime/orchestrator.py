@@ -46,6 +46,7 @@ from datamate.prompts.budget import ContextBuilder
 from datamate.runtime.pipeline import answer_question
 from datamate.runtime.promptstore import PromptBlobStore
 from datamate.runtime.writer import ResultWriter
+from datamate.solver.solve import SqlExecutor
 
 SetupFn = Callable[[str], "tuple[BusinessCatalog | None, str | None]"]
 TICK_S = 0.05
@@ -122,12 +123,13 @@ class Orchestrator:
                  supervisor: ReplicaSupervisor | None = None,
                  clock: Callable[[], float] = time.monotonic, t0: float | None = None,
                  progress_log: Path | None = None, blobs: PromptBlobStore | None = None,
-                 context: ContextBuilder | None = None):
+                 context: ContextBuilder | None = None, executor: SqlExecutor | None = None):
         self.cfg, self.split, self.questions = cfg, split, list(questions)
         self.clients, self.writer, self._setup = clients, writer, setup
         self._supervisor, self._clock = supervisor, clock
         self._t0 = clock() if t0 is None else t0
         self._progress_log, self._blobs, self._context = progress_log, blobs, context
+        self._executor = executor
         n = len(clients)
         self._queues: list[queue.Queue[tuple[Question, BusinessCatalog | None, str | None]]] = [
             queue.Queue() for _ in range(n)]
@@ -208,7 +210,7 @@ class Orchestrator:
         try:
             record, log = answer_question(q, self.split, cat, self.clients[replica], self.cfg,
                                           pipeline_error=err, deadline=deadline, blobs=self._blobs,
-                                          context=self._context)
+                                          context=self._context, executor=self._executor)
         except BaseException as exc:  # answer_question already guards Exception; be total
             record, log = _abstain(q, codes.E_INTERNAL, f"{type(exc).__name__}: {exc}")
         if not self.writer.try_write(record, log):

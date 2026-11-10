@@ -62,3 +62,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 - `llm/tokenizer.py`, `prompts/budget.py`, `solver.*` budget keys, `E_CONTEXT_OVERFLOW` (contracts **1.8.0**), pipeline + run.json integration, SPEC §18.9. Dev configs (`config/dev.json`, `config/replay.json`) use `solver.tokenizer=estimate`; production requires the real tokenizer (exit 2 otherwise).
 - `.venv/bin/pytest -o addopts="" -q` → all pass (426 incl. 1 skipped real-tokenizer test: no local model/tokenizer files); ruff clean.
 - **Coordination with M1**: M1's `select_schema_context` (branch `m1/M1-14-implementation-handoff`) already does SchemaCard budgeting/relevant-subset with an HF-style tokenizer; it was not copied. After M1 merges and rebases on the new contracts, wire it as `ContextBuilder(schema_fn=…, schema_subset_fn=…)` in `run._context_builder`. M1's branch also replaces `runtime/pipeline.py`; expect a conflict there with M4-05/M4-07/M3-03 (all of mine touch `answer_question`) — M1 should rebase onto main after these merge.
+
+### M3-07 sandbox worker pool — branch `m3/M3-07-sandbox-pool` (stacked on `m3/M3-03-token-budget`)
+- `sandbox/pool.py`, `SqlExecutor` threaded through solver → pipeline → orchestrator → `run.main`, `exec_limits.{isolation,workers,kill_grace_s}`, `E_EXEC_CRASH` (contracts **1.9.0**), SPEC §18.10.
+- `.venv/bin/pytest -o addopts="" -q` → all pass; `tests/unit/test_sandbox_pool.py` 9 passed (≈8 s). RLIMIT_AS verified only through the memory-bomb behaviour (either `E_SQL_EXEC` from DuckDB's limit or `E_EXEC_CRASH`; both accepted, pool recovers).
+- Not done: Python fallback executor (M3-11), RLIMIT value on the 8 GB production setting not exercised, behaviour under `--network none` irrelevant (no sockets used).

@@ -33,6 +33,7 @@ from datamate.parse import parse_question
 from datamate.prompts.budget import ContextBuilder, ContextOverflow
 from datamate.runtime.promptstore import PromptBlobStore
 from datamate.solver import solve
+from datamate.solver.solve import SqlExecutor
 from datamate.temporal import resolve_windows
 
 
@@ -62,7 +63,8 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
                     pipeline_error: str | None = None,
                     deadline: Deadline = NO_DEADLINE,
                     blobs: PromptBlobStore | None = None,
-                    context: ContextBuilder | None = None) -> tuple[SubmissionRecord, LogRecord]:
+                    context: ContextBuilder | None = None,
+                    executor: SqlExecutor | None = None) -> tuple[SubmissionRecord, LogRecord]:
     started = time.monotonic()
     calls: list[ModelCall] = []
     attempts: list[SolverAttempt] = []
@@ -91,7 +93,7 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
             windows, pipeline_error = resolve_windows(frame.time, q.as_of_date, split.temporal,
                                                       cat.data_range)
         if pipeline_error is None and pre_solve_decision(frame, windows, cat, cfg) is None:
-            attempts = solve(q, frame, windows, prompt_cat, split, client, cfg, deadline)
+            attempts = solve(q, frame, windows, prompt_cat, split, client, cfg, deadline, executor)
             calls.extend(a.model_call for a in attempts)
         decision = decide(frame, windows, attempts, cat, cfg, pipeline_error)
         if deadline.hard_expired and decision.kind != "answer":

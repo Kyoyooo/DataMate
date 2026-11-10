@@ -11,11 +11,14 @@ Python fallback, soft deadlines.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from pydantic import ValidationError
 
-from datamate.config import RunConfig
+from datamate.config import ExecLimits, RunConfig
 from datamate.contracts import (
     BusinessCatalog,
+    ExecutionResult,
     Question,
     QuestionFrame,
     SolverAttempt,
@@ -30,13 +33,15 @@ from datamate.sandbox import run_sql
 from datamate.solver.sql_rules import check_sql
 from datamate.solver.typed import to_typed_value
 
+SqlExecutor = Callable[[str, str, ExecLimits], ExecutionResult]
 SOLVE_TEMPLATE = "solve.sql.v1"
 REPAIR_TEMPLATE = "repair.sql.v1"
 
 
 def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: BusinessCatalog,
           split: SplitContext, client: ModelClient, cfg: RunConfig,
-          deadline: Deadline = NO_DEADLINE) -> list[SolverAttempt]:
+          deadline: Deadline = NO_DEADLINE,
+          executor: SqlExecutor | None = None) -> list[SolverAttempt]:
     attempts: list[SolverAttempt] = []
     messages = render_solve(q, frame, windows, split, cat)
     stage, template = "solve", SOLVE_TEMPLATE
@@ -63,7 +68,7 @@ def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: Bus
             else:
                 error_code, error_text = check_sql(output.sql)
                 if error_code is None:
-                    execution = run_sql(cat.db_path, output.sql, cfg.exec_limits)
+                    execution = (executor or run_sql)(cat.db_path, output.sql, cfg.exec_limits)
                     if execution.ok:
                         value, error_code = to_typed_value(frame, execution)
                     else:
