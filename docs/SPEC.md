@@ -1273,3 +1273,7 @@ Registers `E_EXEC_CRASH` (`CONTRACTS_VERSION = "1.9.0"`). `exec_limits` gains `i
 
 New template ids `solve.sql.v2`, `repair.sql.v2` (v1 unchanged; its SHA-256 is pinned by a test). `solver.template_version` (`v1` default | `v2`) selects them; `solver.fewshot_bank_path` and `solver.fewshot_exclude_businesses` (leakage guard, dev folds only) control few-shot examples, which are rendered into the **question block** of v2 so the business-level prefix stays cacheable and byte-identical. The bank selector uses a dependency-free token-set Jaccard instead of rapidfuzz (§7.7.2) with the same tie-break rule. The bank file is generated, never hand-written.
 
+### 18.12 M3-11 python fallback (contracts 1.10.0)
+
+Additive contract changes (`CONTRACTS_VERSION = "1.10.0"`): `Stage` gains `fallback`; new `PythonSolverOutput {python, notes}`; `ExecutionResult.language` (`sql` default | `python`); `SolverAttempt.python_output` and `solver_output` now optional. `solver.python_fallback` (default **false**) enables one fallback attempt after the SQL attempts failed with an error that is about the code (never after `E_EMPTY_RESULT`, `D_IMPLAUSIBLE`, `E_SQL_TIMEOUT`, `E_EXEC_CRASH`, a model error, a soft deadline or degrade mode). Config adds `model.max_tokens.fallback` (3072) and `model.enable_thinking.fallback`. Execution follows §7.8 (allow-listed imports, fault boundary only) inside the killable pool. A list/table return value uses dict keys as columns (`item, sort_key, tie_code` / `ord, item` / entity + measures).
+

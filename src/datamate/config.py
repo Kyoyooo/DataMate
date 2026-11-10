@@ -43,9 +43,10 @@ class ModelConfig(_Section):
     presence_penalty: float = Field(default=0.0, ge=-2, le=2)
     frequency_penalty: float = Field(default=0.0, ge=-2, le=2)
     repetition_penalty: float = Field(default=1.0, gt=0, allow_inf_nan=False)
-    enable_thinking: dict[str, bool] = {"parse": False, "solve": False, "repair": False}
+    enable_thinking: dict[str, bool] = {"parse": False, "solve": False, "repair": False,
+                                       "fallback": False}
     seed: int = 20261116
-    max_tokens: dict[str, int] = {"parse": 1024, "solve": 2048, "repair": 2048}
+    max_tokens: dict[str, int] = {"parse": 1024, "solve": 2048, "repair": 2048, "fallback": 3072}
 
     @field_validator("base_url")
     @classmethod
@@ -133,6 +134,9 @@ class SolverConfig(_Section):
     # Prompt version (never edit a released id; see prompts/templates.py). v2 is opt-in until a
     # held-out run shows it is not worse (TASKS M3-09).
     template_version: Literal["v1", "v2"] = "v1"
+    # Optional python fallback after failed SQL attempts (SPEC §7.7.4, §7.8). Off until a held-out
+    # run shows a gain without regressions (TASKS M3-11 / L-07).
+    python_fallback: bool = False
     # Few-shot bank built from the TRAINING split only (training_code/data_generation/build_fewshot.py).
     # null = no examples. Used with template v2. `fewshot_exclude_businesses` is the leakage guard for
     # cross-validation folds (dev harness); it must stay empty in production.

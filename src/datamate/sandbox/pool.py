@@ -36,6 +36,7 @@ def _worker_main(conn: Connection, limits: ExecLimits, scratch: str) -> None:
     import resource
 
     from datamate.sandbox.execute import open_readonly, run_sql
+    from datamate.sandbox.python_exec import run_python
 
     cap = (limits.memory_limit_mb + RLIMIT_HEADROOM_MB) * 1024 * 1024
     resource.setrlimit(resource.RLIMIT_AS, (cap, cap))
@@ -48,11 +49,12 @@ def _worker_main(conn: Connection, limits: ExecLimits, scratch: str) -> None:
             return
         if msg is None:
             return
-        db_path, sql = msg
+        kind, db_path, sql = msg
         try:
             if db_path not in connections:
                 connections[db_path] = open_readonly(db_path, limits, scratch)
-            result = run_sql(db_path, sql, limits, connection=connections[db_path])
+            runner = run_python if kind == "python" else run_sql
+            result = runner(db_path, sql, limits, connection=connections[db_path])
         except Exception as exc:  # opening the database failed: a result, not a crash
             result = ExecutionResult(code=sql, ok=False, error_code=codes.E_SQL_EXEC,
                                      error_text=f"{type(exc).__name__}: {exc}"[:2000])
@@ -101,23 +103,31 @@ class SandboxPool:
 
     def run_sql(self, db_path: str, sql: str, limits: ExecLimits | None = None) -> ExecutionResult:
         """``limits`` is accepted for signature compatibility; the pool's limits apply."""
+        return self._run("sql", db_path, sql)
+
+    def run_python(self, db_path: str, code: str, limits: ExecLimits | None = None) -> ExecutionResult:
+        return self._run("python", db_path, code)
+
+    def _run(self, kind: str, db_path: str, sql: str) -> ExecutionResult:
         started = time.monotonic()
         worker = self._idle.get()
         wait = self.limits.sql_timeout_s + self.limits.kill_grace_s
         try:
-            worker.parent.send((db_path, sql))
+            worker.parent.send((kind, db_path, sql))
             if worker.parent.poll(wait):
                 result = worker.parent.recv()
                 self._idle.put(worker)
                 return result
             self._replace(worker)
             return ExecutionResult(
+                language="python" if kind == "python" else "sql",
                 code=sql, ok=False, error_code=codes.E_SQL_TIMEOUT,
                 error_text=f"worker killed after {wait:g} s without an answer",
                 duration_ms=int((time.monotonic() - started) * 1000))
         except (EOFError, OSError, BrokenPipeError) as exc:
             self._replace(worker)
             return ExecutionResult(
+                language="python" if kind == "python" else "sql",
                 code=sql, ok=False, error_code=codes.E_EXEC_CRASH,
                 error_text=f"sandbox worker died ({type(exc).__name__}); replaced",
                 duration_ms=int((time.monotonic() - started) * 1000))

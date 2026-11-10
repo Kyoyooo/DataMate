@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.9.0"  # additive: E_EXEC_CRASH (M3-07) on top of 1.8.0
+CONTRACTS_VERSION = "1.10.0"  # additive: python fallback types (M3-11) on top of 1.9.0
 
 
 class Contract(BaseModel):
@@ -31,7 +31,7 @@ AnswerType = Literal["number", "percent", "string", "date", "boolean", "list", "
 DecisionKind = Literal["answer", "unanswerable", "abstain"]
 DateGranularity = Literal["day", "month"]
 Granularity = Literal["day", "week", "month", "quarter", "year", "range"]
-Stage = Literal["rule_profile", "parse", "solve", "repair"]
+Stage = Literal["rule_profile", "parse", "solve", "repair", "fallback"]
 # How a number is rounded on the wire (design correction DC-1, see SPEC §18).
 NumericKind = Literal["money", "count", "measure"]
 # Ranked list (sorted by the formatter) vs. list in the order the question gives (DC-2).
@@ -335,7 +335,15 @@ class SolverOutput(Contract):
     notes: str = Field(default="", max_length=300)
 
 
+class PythonSolverOutput(Contract):
+    """Model output of the optional python fallback stage (``solve.python.v1``, M3-11)."""
+
+    python: str
+    notes: str = Field(default="", max_length=300)
+
+
 class ExecutionResult(Contract):
+    language: Literal["sql", "python"] = "sql"
     code: str  # exact executed text
     ok: bool
     error_code: str | None = None
@@ -400,7 +408,8 @@ class SolverAttempt(Contract):
     attempt_no: int
     stage: Stage
     model_call: ModelCall
-    solver_output: SolverOutput | None  # None if model output was invalid
+    solver_output: SolverOutput | None = None  # None if model output was invalid / python stage
+    python_output: PythonSolverOutput | None = None  # fallback stage output (M3-11)
     execution: ExecutionResult | None
     ok: bool
     error_code: str | None = None
