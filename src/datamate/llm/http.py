@@ -88,8 +88,10 @@ class HttpModelClient:
 
     def complete(self, *, stage: Stage, template_id: str, messages: list[dict[str, str]],
                  json_schema: dict[str, Any] | None, max_tokens: int,
-                 call_id: str) -> ModelCall:
+                 call_id: str, timeout_s: float | None = None) -> ModelCall:
         started = time.monotonic()
+        budget = (self.cfg.model_call_timeout_s if timeout_s is None
+                  else min(self.cfg.model_call_timeout_s, timeout_s))
         body: dict[str, Any] = {}
         data = b"{}"  # no request body exists yet if request construction fails
         content, reasoning, finish = "", None, "error"
@@ -105,7 +107,7 @@ class HttpModelClient:
             evidence["original_schema_sha256"] = (
                 hashlib.sha256(_body_bytes(json_schema)).hexdigest() if json_schema is not None else None)
             for attempt in range(1, 3):
-                remaining = self.cfg.model_call_timeout_s - (time.monotonic() - started)
+                remaining = budget - (time.monotonic() - started)
                 if remaining <= 0:
                     raise TimeoutError("model call deadline expired")
                 try:

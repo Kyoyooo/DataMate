@@ -28,7 +28,7 @@ from datamate.contracts import (
 )
 from datamate.decision import decide, pre_solve_decision
 from datamate.formatting import to_submission
-from datamate.llm import ModelClient
+from datamate.llm import NO_DEADLINE, Deadline, DeadlineExceeded, ModelClient
 from datamate.parse import parse_question
 from datamate.solver import solve
 from datamate.temporal import resolve_windows
@@ -57,7 +57,8 @@ def _thinking(calls: list[ModelCall]) -> list[str] | None:
 
 def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | None,
                     client: ModelClient, cfg: RunConfig,
-                    pipeline_error: str | None = None) -> tuple[SubmissionRecord, LogRecord]:
+                    pipeline_error: str | None = None,
+                    deadline: Deadline = NO_DEADLINE) -> tuple[SubmissionRecord, LogRecord]:
     started = time.monotonic()
     calls: list[ModelCall] = []
     attempts: list[SolverAttempt] = []
@@ -68,16 +69,22 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
         if pipeline_error is None and (cat is None or cat.status != "ready"):
             pipeline_error = codes.E_BUSINESS_SETUP
         if pipeline_error is None:
-            frame, call, pipeline_error = parse_question(q, split, cat, client, cfg)
+            frame, call, pipeline_error = parse_question(q, split, cat, client, cfg, deadline)
             calls.append(call)
         if pipeline_error is None:
             windows, pipeline_error = resolve_windows(frame.time, q.as_of_date, split.temporal,
                                                       cat.data_range)
         if pipeline_error is None and pre_solve_decision(frame, windows, cat, cfg) is None:
-            attempts = solve(q, frame, windows, cat, split, client, cfg)
+            attempts = solve(q, frame, windows, cat, split, client, cfg, deadline)
             calls.extend(a.model_call for a in attempts)
         decision = decide(frame, windows, attempts, cat, cfg, pipeline_error)
+        if deadline.hard_expired and decision.kind != "answer":
+            raise DeadlineExceeded  # out of time: report E_DEADLINE / E_GLOBAL_STOP, not a guess
         record = to_submission(q.id, decision, frame.ranking if frame else None, cfg.formatting)
+    except DeadlineExceeded:
+        decision = Decision(kind="abstain", reason_code=getattr(
+            deadline, "stop_reason_code", codes.E_DEADLINE))
+        record = SubmissionRecord(id=q.id, type="abstain")
     except Exception:  # question boundary: never let one question stop the run
         error_detail = traceback.format_exc(limit=20)
         decision = Decision(kind="abstain", reason_code=codes.E_INTERNAL)

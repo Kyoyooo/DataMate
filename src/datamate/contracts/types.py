@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.4.0"  # additive M3-02 ModelCall transport evidence (on top of 1.3.0)
+CONTRACTS_VERSION = "1.5.0"  # additive: runtime reason codes (M4-05) on top of 1.4.0 transport evidence
 
 
 class Contract(BaseModel):
