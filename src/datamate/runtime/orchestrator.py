@@ -42,6 +42,7 @@ from datamate.contracts import (
     codes,
 )
 from datamate.llm import ModelClient
+from datamate.prompts.budget import ContextBuilder
 from datamate.runtime.pipeline import answer_question
 from datamate.runtime.promptstore import PromptBlobStore
 from datamate.runtime.writer import ResultWriter
@@ -120,12 +121,13 @@ class Orchestrator:
                  clients: list[ModelClient], writer: ResultWriter, setup: SetupFn,
                  supervisor: ReplicaSupervisor | None = None,
                  clock: Callable[[], float] = time.monotonic, t0: float | None = None,
-                 progress_log: Path | None = None, blobs: PromptBlobStore | None = None):
+                 progress_log: Path | None = None, blobs: PromptBlobStore | None = None,
+                 context: ContextBuilder | None = None):
         self.cfg, self.split, self.questions = cfg, split, list(questions)
         self.clients, self.writer, self._setup = clients, writer, setup
         self._supervisor, self._clock = supervisor, clock
         self._t0 = clock() if t0 is None else t0
-        self._progress_log, self._blobs = progress_log, blobs
+        self._progress_log, self._blobs, self._context = progress_log, blobs, context
         n = len(clients)
         self._queues: list[queue.Queue[tuple[Question, BusinessCatalog | None, str | None]]] = [
             queue.Queue() for _ in range(n)]
@@ -205,7 +207,8 @@ class Orchestrator:
                                     self._global_stop_at, self._stop, self._degrade)
         try:
             record, log = answer_question(q, self.split, cat, self.clients[replica], self.cfg,
-                                          pipeline_error=err, deadline=deadline, blobs=self._blobs)
+                                          pipeline_error=err, deadline=deadline, blobs=self._blobs,
+                                          context=self._context)
         except BaseException as exc:  # answer_question already guards Exception; be total
             record, log = _abstain(q, codes.E_INTERNAL, f"{type(exc).__name__}: {exc}")
         if not self.writer.try_write(record, log):

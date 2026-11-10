@@ -1261,3 +1261,7 @@ Registers `E_REPLAY_MISS` (additive; `CONTRACTS_VERSION = "1.6.0"`). `ReplayMode
 
 **run.json** now also carries `model` (path, served name, backend, revision, file sizes, hash of `SHA256SUMS` if shipped), `environment` (Python, platform, package versions read from metadata, GPUs from `nvidia-smi` or null, selected env vars, hash of `requirements.lock` and `BUILD_INFO.json` when present under `/code`), `timings` (`replica_load_ms`, `first_answer_ms`, `total_ms`), `degrade_activated_ms`, `replicas` (ports, GPUs, commands, restarts, events); `businesses.jsonl` rows carry `setup_ms`.
 
+### 18.9 M3-03 context budget (contracts 1.8.0)
+
+Registers `E_CONTEXT_OVERFLOW` (named in §10.2; `CONTRACTS_VERSION = "1.8.0"`). New `solver.*` keys: `tokenizer` (`model` | `estimate`; `estimate` is development-only and production exits 2 if the model's tokenizer cannot be loaded from `model.path` with `local_files_only`), `context_budget_tokens`, `schema_card_budget_tokens`, `readme_budget_tokens`, `fewshot_k`, `question_block_reserve_tokens`. `prompts/budget.py` implements the §7.7.1 reduction order; the SchemaCard relevant-subset step is an injected callable so that M1's `select_schema_context` (HF-style `encode(text, add_special_tokens=False)` tokenizer interface, matched by `llm/tokenizer.py`) can be connected without duplicating it. The per-question record `decision.context` carries `{tokens, reductions, tokenizer}` (or `{overflow}`); run.json carries `context_budget`.
+
