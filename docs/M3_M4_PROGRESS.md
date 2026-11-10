@@ -57,3 +57,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 - `tools/precheck.sh` / `tools/precheck.py`; runbooks `docs/runbooks/{build-export-upload,e5-run,private-test-run}.md` (plus `record-model-calls.md` from M3-13).
 - `.venv/bin/pytest -o addopts="" -q` → `425 passed`; precheck on a real fixture result: C1–C3 PASS, PA 1.0000. Broken-dir tests: missing/duplicate/bad-type submission lines, missing `thinking`, negative `elapsed_ms`, missing log, log≠submission, missing `run.json`.
 - Not run: `precheck --image` (no reference image), `--measure-tar`. Runbooks are untested by a person other than the author.
+
+### M3-03 token budgeting — branch `m3/M3-03-token-budget` (stacked on `m4/M4-14-precheck-runbooks`)
+- `llm/tokenizer.py`, `prompts/budget.py`, `solver.*` budget keys, `E_CONTEXT_OVERFLOW` (contracts **1.8.0**), pipeline + run.json integration, SPEC §18.9. Dev configs (`config/dev.json`, `config/replay.json`) use `solver.tokenizer=estimate`; production requires the real tokenizer (exit 2 otherwise).
+- `.venv/bin/pytest -o addopts="" -q` → all pass (426 incl. 1 skipped real-tokenizer test: no local model/tokenizer files); ruff clean.
+- **Coordination with M1**: M1's `select_schema_context` (branch `m1/M1-14-implementation-handoff`) already does SchemaCard budgeting/relevant-subset with an HF-style tokenizer; it was not copied. After M1 merges and rebases on the new contracts, wire it as `ContextBuilder(schema_fn=…, schema_subset_fn=…)` in `run._context_builder`. M1's branch also replaces `runtime/pipeline.py`; expect a conflict there with M4-05/M4-07/M3-03 (all of mine touch `answer_question`) — M1 should rebase onto main after these merge.

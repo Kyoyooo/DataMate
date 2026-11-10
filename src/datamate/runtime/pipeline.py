@@ -30,6 +30,7 @@ from datamate.decision import decide, pre_solve_decision
 from datamate.formatting import to_submission
 from datamate.llm import NO_DEADLINE, Deadline, DeadlineExceeded, ModelClient
 from datamate.parse import parse_question
+from datamate.prompts.budget import ContextBuilder, ContextOverflow
 from datamate.runtime.promptstore import PromptBlobStore
 from datamate.solver import solve
 from datamate.temporal import resolve_windows
@@ -60,24 +61,37 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
                     client: ModelClient, cfg: RunConfig,
                     pipeline_error: str | None = None,
                     deadline: Deadline = NO_DEADLINE,
-                    blobs: PromptBlobStore | None = None) -> tuple[SubmissionRecord, LogRecord]:
+                    blobs: PromptBlobStore | None = None,
+                    context: ContextBuilder | None = None) -> tuple[SubmissionRecord, LogRecord]:
     started = time.monotonic()
     calls: list[ModelCall] = []
     attempts: list[SolverAttempt] = []
     windows: list[TimeWindow] = []
     frame: QuestionFrame | None = None
     error_detail: str | None = None
+    context_log: dict[str, Any] | None = None
+    prompt_cat = cat  # the catalog as shown to the model (budgeted README / SchemaCard)
     try:
         if pipeline_error is None and (cat is None or cat.status != "ready"):
             pipeline_error = codes.E_BUSINESS_SETUP
+        if pipeline_error is None and context is not None:
+            try:
+                plan = context.plan(q, split, cat)
+                prompt_cat = plan.catalog
+                context_log = {"tokens": plan.total_tokens, "reductions": plan.reductions,
+                               "tokenizer": plan.tokenizer}
+            except ContextOverflow as exc:
+                pipeline_error = codes.E_CONTEXT_OVERFLOW
+                context_log = {"overflow": str(exc)}
         if pipeline_error is None:
-            frame, call, pipeline_error = parse_question(q, split, cat, client, cfg, deadline)
+            frame, call, pipeline_error = parse_question(q, split, prompt_cat, client, cfg,
+                                                         deadline)
             calls.append(call)
         if pipeline_error is None:
             windows, pipeline_error = resolve_windows(frame.time, q.as_of_date, split.temporal,
                                                       cat.data_range)
         if pipeline_error is None and pre_solve_decision(frame, windows, cat, cfg) is None:
-            attempts = solve(q, frame, windows, cat, split, client, cfg, deadline)
+            attempts = solve(q, frame, windows, prompt_cat, split, client, cfg, deadline)
             calls.extend(a.model_call for a in attempts)
         decision = decide(frame, windows, attempts, cat, cfg, pipeline_error)
         if deadline.hard_expired and decision.kind != "answer":
@@ -99,6 +113,8 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
                                     "features": decision.features}
     if error_detail:
         decision_log["error"] = error_detail
+    if context_log:
+        decision_log["context"] = context_log
     log = LogRecord(
         id=q.id,
         answer=wire,

@@ -3,5 +3,8 @@
   "model": {
     "backend": "replay",
     "replay_path": "tests/fixtures/model_calls/split_mini.scripted.jsonl"
+  },
+  "solver": {
+    "tokenizer": "estimate"
   }
 }

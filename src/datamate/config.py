@@ -123,6 +123,13 @@ class DeadlinesConfig(_Section):
 
 class SolverConfig(_Section):
     max_repairs: int = Field(default=1, ge=0)
+    # Context budget (SPEC §6.2, §7.7.1); tokens counted with the shipped model's tokenizer.
+    tokenizer: Literal["model", "estimate"] = "model"  # "estimate" = dev-only character estimate
+    context_budget_tokens: int = Field(default=24000, ge=1000)
+    schema_card_budget_tokens: int = Field(default=8000, ge=100)
+    readme_budget_tokens: int = Field(default=2000, ge=0)
+    fewshot_k: int = Field(default=3, ge=0)
+    question_block_reserve_tokens: int = Field(default=1500, ge=0)  # question, frame, windows, answer
 
 
 class ExecLimits(_Section):

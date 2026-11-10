@@ -149,12 +149,16 @@ def _windows_text(windows: list[TimeWindow]) -> str:
     )
 
 
+def render_solve_system(split: SplitContext, cat: BusinessCatalog) -> str:
+    """The business-level solve system prompt (sections 1-5 of SPEC §7.7.1)."""
+    return SOLVE_SYSTEM_V1.format(rulebook=split.rulebook_text, readme=cat.readme_text or "(none)",
+                                  schema_card=cat.schema_card)
+
+
 def render_solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow],
                  split: SplitContext, cat: BusinessCatalog) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": SOLVE_SYSTEM_V1.format(
-            rulebook=split.rulebook_text, readme=cat.readme_text or "(none)",
-            schema_card=cat.schema_card)},
+        {"role": "system", "content": render_solve_system(split, cat)},
         {"role": "user", "content": SOLVE_USER_V1.format(
             as_of_date=q.as_of_date.isoformat(), question=q.question,
             frame_json=frame.model_dump_json(), windows=_windows_text(windows))},
