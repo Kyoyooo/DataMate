@@ -194,10 +194,12 @@ def test_production_mode_rejects_scripted_backend(tmp_path: Path, capsys) -> Non
     assert not (out / "submission.jsonl").exists()
 
 
-def test_production_config_requires_http_endpoint(tmp_path: Path, capsys) -> None:
+def test_production_config_refuses_without_model_weights(tmp_path: Path, capsys) -> None:
+    # The frozen config serves a model from /code/models/<dir>; absent weights must stop the
+    # run before any output file exists (TASKS M4-09 acceptance).
     code, out = _run(tmp_path, "--config", str(REPO / "config" / "run_config.json"))
     assert code == 2
-    assert "model.base_url is required" in capsys.readouterr().err
+    assert "model.path" in capsys.readouterr().err
     assert not (out / "submission.jsonl").exists()
 
 

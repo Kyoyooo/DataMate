@@ -1,0 +1,6 @@
+{
+  "format": "datamate.data_manifest.v1",
+  "files": [],
+  "omitted_base_checkpoints": [],
+  "notes": "No model was trained or fine-tuned; inference weights are packaged under /code/models. Public/private test data is not part of this manifest."
+}
