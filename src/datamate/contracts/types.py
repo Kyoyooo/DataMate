@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.5.0"  # additive: runtime reason codes (M4-05) on top of 1.4.0 transport evidence
+CONTRACTS_VERSION = "1.6.0"  # additive: E_REPLAY_MISS (M3-13) on top of 1.5.0 runtime codes
 
 
 class Contract(BaseModel):
