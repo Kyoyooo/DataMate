@@ -14,7 +14,6 @@ Script file: JSONL, one object per response:
 from __future__ import annotations
 
 import json
-import threading
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -32,7 +31,6 @@ class ScriptedModelClient:
         for e in entries:
             self._responses[(e["stage"], e["question"])].append(e)
         self._cursor: dict[tuple[str, str], int] = defaultdict(int)
-        self._lock = threading.Lock()  # workers call concurrently
 
     @classmethod
     def from_file(cls, path: str | Path) -> ScriptedModelClient:
@@ -45,15 +43,14 @@ class ScriptedModelClient:
 
     def complete(self, *, stage: Stage, template_id: str, messages: list[dict[str, str]],
                  json_schema: dict[str, Any] | None, max_tokens: int,
-                 call_id: str, timeout_s: float | None = None) -> ModelCall:
+                 call_id: str) -> ModelCall:
         params = {"max_tokens": max_tokens, "temperature": 0.0}
         user_text = "\n".join(m["content"] for m in messages if m["role"] == "user")
         key = self._match(stage, user_text)
         entry = None
-        with self._lock:
-            if key is not None and self._cursor[key] < len(self._responses[key]):
-                entry = self._responses[key][self._cursor[key]]
-                self._cursor[key] += 1
+        if key is not None and self._cursor[key] < len(self._responses[key]):
+            entry = self._responses[key][self._cursor[key]]
+            self._cursor[key] += 1
         return ModelCall(
             call_id=call_id,
             stage=stage,

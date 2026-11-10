@@ -28,9 +28,8 @@ from datamate.contracts import (
 )
 from datamate.decision import decide, pre_solve_decision
 from datamate.formatting import to_submission
-from datamate.llm import NO_DEADLINE, Deadline, DeadlineExceeded, ModelClient
+from datamate.llm import ModelClient
 from datamate.parse import parse_question
-from datamate.runtime.promptstore import PromptBlobStore
 from datamate.solver import solve
 from datamate.temporal import resolve_windows
 
@@ -58,9 +57,7 @@ def _thinking(calls: list[ModelCall]) -> list[str] | None:
 
 def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | None,
                     client: ModelClient, cfg: RunConfig,
-                    pipeline_error: str | None = None,
-                    deadline: Deadline = NO_DEADLINE,
-                    blobs: PromptBlobStore | None = None) -> tuple[SubmissionRecord, LogRecord]:
+                    pipeline_error: str | None = None) -> tuple[SubmissionRecord, LogRecord]:
     started = time.monotonic()
     calls: list[ModelCall] = []
     attempts: list[SolverAttempt] = []
@@ -71,22 +68,16 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
         if pipeline_error is None and (cat is None or cat.status != "ready"):
             pipeline_error = codes.E_BUSINESS_SETUP
         if pipeline_error is None:
-            frame, call, pipeline_error = parse_question(q, split, cat, client, cfg, deadline)
+            frame, call, pipeline_error = parse_question(q, split, cat, client, cfg)
             calls.append(call)
         if pipeline_error is None:
             windows, pipeline_error = resolve_windows(frame.time, q.as_of_date, split.temporal,
                                                       cat.data_range)
         if pipeline_error is None and pre_solve_decision(frame, windows, cat, cfg) is None:
-            attempts = solve(q, frame, windows, cat, split, client, cfg, deadline)
+            attempts = solve(q, frame, windows, cat, split, client, cfg)
             calls.extend(a.model_call for a in attempts)
         decision = decide(frame, windows, attempts, cat, cfg, pipeline_error)
-        if deadline.hard_expired and decision.kind != "answer":
-            raise DeadlineExceeded  # out of time: report E_DEADLINE / E_GLOBAL_STOP, not a guess
         record = to_submission(q.id, decision, frame.ranking if frame else None, cfg.formatting)
-    except DeadlineExceeded:
-        decision = Decision(kind="abstain", reason_code=getattr(
-            deadline, "stop_reason_code", codes.E_DEADLINE))
-        record = SubmissionRecord(id=q.id, type="abstain")
     except Exception:  # question boundary: never let one question stop the run
         error_detail = traceback.format_exc(limit=20)
         decision = Decision(kind="abstain", reason_code=codes.E_INTERNAL)
@@ -107,8 +98,7 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
         code=code,
         output=output,
         business_id=q.business_id,
-        calls=[blobs.compact(c) for c in calls] if blobs else calls,
-        degrade=deadline.degrade,
+        calls=calls,
         attempts=[{"attempt_no": a.attempt_no, "stage": a.stage, "ok": a.ok,
                    "error_code": a.error_code,
                    "duration_ms": a.execution.duration_ms if a.execution else None}

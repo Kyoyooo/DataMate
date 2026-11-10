@@ -24,31 +24,19 @@ from datamate.contracts import (
     codes,
 )
 from datamate.lexicon import fold
-from datamate.llm import NO_DEADLINE, Deadline, ModelClient
-from datamate.llm.deadline import check
+from datamate.llm import ModelClient
 from datamate.prompts import render_parse
 
 TEMPLATE_ID = "parse.frame.v3"
 
 
-def _cap(deadline: Deadline) -> float | None:
-    remaining = deadline.remaining_s()
-    return None if remaining == float("inf") else remaining
-
-
 def parse_question(q: Question, split: SplitContext, cat: BusinessCatalog, client: ModelClient,
-                   cfg: RunConfig,
-                   deadline: Deadline = NO_DEADLINE) -> tuple[QuestionFrame | None, ModelCall, str | None]:
-    """Return (frame, call, error_code). ``frame`` is None iff ``error_code`` is set.
-
-    Raises ``DeadlineExceeded`` before the call if the hard deadline has already passed.
-    """
-    check(deadline)
+                   cfg: RunConfig) -> tuple[QuestionFrame | None, ModelCall, str | None]:
+    """Return (frame, call, error_code). ``frame`` is None iff ``error_code`` is set."""
     call = client.complete(
         stage="parse", template_id=TEMPLATE_ID, messages=render_parse(q, split, cat),
         json_schema=QuestionFrame.model_json_schema(),
         max_tokens=cfg.model.max_tokens["parse"], call_id=f"{q.id}:parse:1",
-        timeout_s=_cap(deadline),
     )
     if call.error:
         return None, call, call.error

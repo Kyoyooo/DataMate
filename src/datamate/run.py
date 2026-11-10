@@ -20,11 +20,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import signal
 import sys
 import time
 from collections import Counter
-from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -45,10 +43,7 @@ from datamate.lexicon import nfc
 from datamate.llm import ModelClient, ProductionGuardError, make_client
 from datamate.prompts import template_sha256
 from datamate.rules import load_split
-from datamate.runtime import Orchestrator, ResultWriter
-from datamate.runtime.environment import fingerprint, model_record
-from datamate.runtime.orchestrator import ReplicaSupervisor
-from datamate.runtime.promptstore import PromptBlobStore
+from datamate.runtime import ResultWriter, answer_question
 
 
 def load_questions(path: Path) -> tuple[list[Question], list[tuple[str, str, str]], dict[str, int]]:
@@ -91,61 +86,52 @@ def _abstain_log(qid: str, business_id: str, reason: str) -> tuple[SubmissionRec
     return rec, log
 
 
-def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: Path,
-        result_dir: Path, *, dev: bool, overrides: list[str], extract_temporal: bool = False,
-        supervisor: ReplicaSupervisor | None = None,
-        serving_record: Callable[[], dict[str, Any]] | None = None) -> int:
-    """Run the whole split. ``client`` is one client per replica (a single client = one replica).
-
-    An empty client list means the model servers could not be started: every question is
-    written as ``abstain`` (E_REPLICA_DOWN) so the submission is still complete.
-    """
+def run(cfg: RunConfig, client: ModelClient, data_dir: Path, result_dir: Path, *, dev: bool,
+        overrides: list[str], extract_temporal: bool = False) -> int:
     t0 = time.monotonic()
-    clients = list(client) if isinstance(client, (list, tuple)) else [client]
-    split = load_split(data_dir, client=clients[0] if extract_temporal and clients else None,
+    split = load_split(data_dir, client=client if extract_temporal else None,
                        max_tokens=cfg.model.max_tokens.get("rule_profile"))
     questions, invalid, counts = load_questions(data_dir / "questions.jsonl")
     work_dir = Path(cfg.work_dir)
+    errors: list[str] = []
+    catalogs: dict[str, BusinessCatalog | None] = {}
     outcome: Counter[str] = Counter()
     reasons: Counter[str] = Counter()
-
-    def setup(business_id: str) -> tuple[BusinessCatalog | None, str | None]:
-        biz_dir = data_dir / "data" / business_id
-        if not biz_dir.is_dir():
-            return None, codes.E_INPUT_BUSINESS_MISSING
-        return setup_business(biz_dir, business_id, work_dir), None
 
     with ResultWriter(result_dir) as writer:
         for qid, biz, reason in invalid:
             writer.write(*_abstain_log(qid, biz, reason))
             outcome["abstain"] += 1
             reasons[reason] += 1
-        blobs = PromptBlobStore(result_dir / "logs" / "prompt_blobs.jsonl")
-        split_calls = [blobs.compact(c).model_dump(mode="json") for c in split.rule_profile_calls]
-        orch = Orchestrator(cfg=cfg, split=split, questions=questions, clients=clients,
-                            writer=writer, setup=setup, supervisor=supervisor, t0=t0,
-                            progress_log=result_dir / "logs" / "progress.log", blobs=blobs)
-        previous = _install_sigterm(orch.request_stop)
-        try:
-            stats = orch.run()
-        finally:
-            _restore_sigterm(previous)
-        # Canonical order: rows rejected at input first (file order), then questions by line.
-        blobs.finalize()
-        writer.finalize_canonical([r[0] for r in invalid]
-                                  + [q.id for q in sorted(questions, key=lambda q: q.line_no)])
+        by_business: dict[str, list[Question]] = {}
+        for q in questions:
+            by_business.setdefault(q.business_id, []).append(q)
+        for business_id in sorted(by_business):
+            biz_dir = data_dir / "data" / business_id
+            pipeline_error = None
+            if not biz_dir.is_dir():
+                catalogs[business_id] = None
+                pipeline_error = codes.E_INPUT_BUSINESS_MISSING
+            else:
+                try:
+                    catalogs[business_id] = setup_business(biz_dir, business_id, work_dir)
+                except Exception as exc:  # business boundary
+                    catalogs[business_id] = None
+                    errors.append(f"setup {business_id}: {type(exc).__name__}: {exc}")
+            for q in by_business[business_id]:
+                record, log = answer_question(q, split, catalogs[business_id], client, cfg,
+                                              pipeline_error=pipeline_error)
+                writer.write(record, log)
+                outcome[record.type if record.type in ("abstain", "unanswerable") else "answer"] += 1
+                reasons[log.decision.get("reason_code", "")] += 1
         distinct = len(questions) + len(invalid)
         complete = len(writer.written_ids()) == distinct
-    outcome.update(stats.outcome)
-    reasons.update(stats.reasons)
 
     businesses_log = result_dir / "logs" / "businesses.jsonl"
     with open(businesses_log, "w", encoding="utf-8") as fh:
-        for business_id in sorted({q.business_id for q in questions}):
-            cat = stats.catalogs.get(business_id)
+        for business_id, cat in sorted(catalogs.items()):
             row: dict[str, Any] = {"business_id": business_id}
             row.update(cat.model_dump(mode="json") if cat else {"status": "missing_or_failed"})
-            row["setup_ms"] = stats.setup_ms.get(business_id)
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     run_record = {
@@ -159,45 +145,19 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         "split": {"rulebook_sha256": split.rulebook_sha256,
                   "temporal_params": split.temporal.model_dump(mode="json"),
                   "temporal_diagnostics": split.temporal_diagnostics,
-                  "calls": split_calls,
+                  "calls": [call.model_dump(mode="json") for call in split.rule_profile_calls],
                   "calendar_ok": split.calendar_ok,
                   "calendar_diagnostic": (split.calendar_diagnostic.model_dump(mode="json")
                                           if split.calendar_diagnostic else None),
                   "warnings": split.warnings},
-        "model": model_record(cfg.model.path, cfg.model.served_model_name, cfg.model.backend,
-                              cfg.model.revision),
-        "environment": fingerprint(),
-        "replica_assignment": dict(sorted(stats.assignment.items())),
-        "replicas": serving_record() if serving_record else None,
-        "orchestrator": {"stop_reason": stats.stop_reason,
-                         "degrade_activated_ms": stats.degrade_activated_ms,
-                         "questions_per_replica": stats.questions_per_replica,
-                         "setup_ms": dict(sorted(stats.setup_ms.items()))},
         "counts": {"questions": distinct, "written": distinct if complete else None,
                    **counts, "by_outcome": dict(outcome), "by_reason": dict(sorted(reasons.items()))},
-        "errors": stats.errors,
-        "timings": {"replica_load_ms": (serving_record() or {}).get("replica_load_ms")
-                    if serving_record else None,
-                    "first_answer_ms": stats.first_answer_ms,
-                    "total_ms": int((time.monotonic() - t0) * 1000)},
-        "degrade_activated_ms": stats.degrade_activated_ms,
+        "errors": errors,
         "total_ms": int((time.monotonic() - t0) * 1000),
     }
     (result_dir / "logs" / "run.json").write_text(
         json.dumps(run_record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 0 if complete else 1
-
-
-def _install_sigterm(handler: Callable[[], None]) -> Any:
-    try:
-        return signal.signal(signal.SIGTERM, lambda *_: handler())
-    except ValueError:  # not the main thread (tests): no handler
-        return None
-
-
-def _restore_sigterm(previous: Any) -> None:
-    if previous is not None:
-        signal.signal(signal.SIGTERM, previous)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -215,37 +175,14 @@ def main(argv: list[str] | None = None) -> int:
     # Startup checks: any failure here exits 2 before a single output file is opened.
     try:
         cfg = load_config(args.config, args.overrides)
-        managed = cfg.serving.mode == "managed"
-        if managed and (not cfg.model.path or not Path(cfg.model.path).is_dir()):
-            raise FileNotFoundError(f"model.path {cfg.model.path!r} is not a directory")
-        # External serving builds its client now so a missing base_url fails before any output.
-        clients = [] if managed else [make_client(cfg.model, dev=args.dev)]
-        if managed and cfg.model.backend != "http":
-            raise ValueError("serving.mode='managed' requires model.backend='http'")
+        client = make_client(cfg.model, dev=args.dev)
         if not (args.data_dir / "questions.jsonl").is_file():
             raise FileNotFoundError(f"{args.data_dir / 'questions.jsonl'} not found")
     except (ProductionGuardError, NotImplementedError, ValidationError, ValueError, OSError) as exc:
         print(f"error: refusing to run: {exc}", file=sys.stderr)
         return 2
-    if not managed:
-        return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
-                   overrides=args.overrides)
-    from datamate.llm.replicas import ReplicaError, ReplicaManager
-
-    manager = ReplicaManager(cfg, args.result_dir / "logs")
-    try:
-        try:
-            manager.start()
-            clients = [make_client(c, dev=args.dev) for c in manager.client_configs()]
-        except ReplicaError as exc:
-            # Serving failed at run time: still deliver a complete (all-abstain) submission.
-            print(f"error: model servers unavailable: {exc}", file=sys.stderr)
-            clients = []
-        return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
-                   overrides=args.overrides, supervisor=manager if clients else None,
-                   serving_record=manager.record)
-    finally:
-        manager.stop()
+    return run(cfg, client, args.data_dir, args.result_dir, dev=args.dev,
+               overrides=args.overrides)
 
 
 if __name__ == "__main__":
