@@ -130,6 +130,14 @@ class SolverConfig(_Section):
     readme_budget_tokens: int = Field(default=2000, ge=0)
     fewshot_k: int = Field(default=3, ge=0)
     question_block_reserve_tokens: int = Field(default=1500, ge=0)  # question, frame, windows, answer
+    # Prompt version (never edit a released id; see prompts/templates.py). v2 is opt-in until a
+    # held-out run shows it is not worse (TASKS M3-09).
+    template_version: Literal["v1", "v2"] = "v1"
+    # Few-shot bank built from the TRAINING split only (training_code/data_generation/build_fewshot.py).
+    # null = no examples. Used with template v2. `fewshot_exclude_businesses` is the leakage guard for
+    # cross-validation folds (dev harness); it must stay empty in production.
+    fewshot_bank_path: str | None = None
+    fewshot_exclude_businesses: list[str] = []
 
 
 class ExecLimits(_Section):
