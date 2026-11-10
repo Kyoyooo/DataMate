@@ -138,25 +138,40 @@ def test_throughput_and_summary_from_a_real_run_directory(fixture_runs):
     assert s["pa"]["pa"] == 1.0 and "environment" in s and "by_reason" in s
 
 
-def test_notebook_is_generated_pinned_and_free_of_outputs():
-    gen = load("make_bakeoff_notebook")
-    nb_path = REPO / "notebooks" / "BAKEOFF_G4.ipynb"
-    assert json.loads(nb_path.read_text()) == gen.build(), "regenerate: python tools/make_bakeoff_notebook.py"
-    nb = json.loads(nb_path.read_text())
-    assert all(c.get("outputs", []) == [] for c in nb["cells"] if c["cell_type"] == "code")
-    first_md = "".join(nb["cells"][0]["source"])
-    assert "does not decide DEC-3" in first_md and "pinned commit" in first_md
-    code = ["".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code"]
-    assert 'REPO_COMMIT = "REPLACE_WITH_40_HEX_COMMIT_ON_MAIN"' in code[0]
-    assert 're.fullmatch(r"[0-9a-f]{40}", REPO_COMMIT)' in code[1] and "answers.jsonl" in code[1]
-    joined = "\n".join(code)
-    for needle in ("is-ancestor", "gpu_memory_fraction", "VLLM_BATCH_INVARIANT", "enable_prefix_caching",
-                   "max_num_seqs", "structured_outputs", "compare_determinism", "verify_candidate"):
-        assert needle in joined, needle
-    assert "--dev" not in joined  # runs the production entry point
+def test_notebook_is_generated_gpu_only_and_valid_python():
     import ast
-    for src in code:
-        ast.parse(src)
+    gen = load("make_bakeoff_notebook")
+    path = REPO / "notebooks" / "BAKEOFF_G4.ipynb"
+    assert json.loads(path.read_text()) == gen.build(), "regenerate: python tools/make_bakeoff_notebook.py"
+    nb = json.loads(path.read_text())
+    assert all(c.get("outputs", []) == [] for c in nb["cells"] if c["cell_type"] == "code")
+    code = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
+    ast.parse(code)
+    for needle in ("import vllm", "train.zip", "snapshot_download", "VLLM_BATCH_INVARIANT", "enable_prefix_caching",
+                   "max_num_seqs", "structured_outputs", "meta.json", "bakeoff_report.py"):
+        assert needle in code, needle
+    # CPU-only work (analysis, licence checks, parameter counts, scoring) is not done on the GPU runtime
+    for cpu_only in ("compare_determinism", "verify_candidate", "count_params", "datamate.eval.score"):
+        assert cpu_only not in code, cpu_only
+
+
+def test_report_runs_on_cpu_from_saved_runs(fixture_runs, tmp_path, capsys):
+    report = load("bakeoff_report")
+    root = tmp_path / "bake"
+    (root / "runs").mkdir(parents=True)
+    a, b = fixture_runs
+    for src, tag in ((a, "m-A1"), (b, "m-A2"), (a, "m-D-baseline-1"), (b, "m-D-baseline-2")):
+        shutil.copytree(src, root / "runs" / tag)
+    shutil.copy(SPLIT / "answers.jsonl", root / "answers.jsonl")
+    (root / "meta.json").write_text(json.dumps({
+        "commit": "a" * 40, "gpu": "test", "compute_capability": "12.0", "candidates": ["org/m"],
+        "models": {"m": "m"}, "variants": ["baseline"], "fold": 0, "exit_codes": {}, "minutes": 1}))
+    assert report.main(["--runs", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "PA 1.0000" in out and "0 answers changed" in out and "baseline identical output rate 1.0" in out
+    assert (root / "report.json").is_file()
+    (root / "runs" / "m-A2" / "submission.jsonl").unlink()
+    assert "runs missing or failed" in json.dumps(report.report(root, False, None))
 
 
 def test_structured_outputs_switch_removes_response_format_from_the_request():
