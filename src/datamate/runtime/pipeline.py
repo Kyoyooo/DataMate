@@ -30,6 +30,7 @@ from datamate.decision import decide, pre_solve_decision
 from datamate.formatting import to_submission
 from datamate.llm import NO_DEADLINE, Deadline, DeadlineExceeded, ModelClient
 from datamate.parse import parse_question
+from datamate.runtime.promptstore import PromptBlobStore
 from datamate.solver import solve
 from datamate.temporal import resolve_windows
 
@@ -58,7 +59,8 @@ def _thinking(calls: list[ModelCall]) -> list[str] | None:
 def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | None,
                     client: ModelClient, cfg: RunConfig,
                     pipeline_error: str | None = None,
-                    deadline: Deadline = NO_DEADLINE) -> tuple[SubmissionRecord, LogRecord]:
+                    deadline: Deadline = NO_DEADLINE,
+                    blobs: PromptBlobStore | None = None) -> tuple[SubmissionRecord, LogRecord]:
     started = time.monotonic()
     calls: list[ModelCall] = []
     attempts: list[SolverAttempt] = []
@@ -105,7 +107,8 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
         code=code,
         output=output,
         business_id=q.business_id,
-        calls=calls,
+        calls=[blobs.compact(c) for c in calls] if blobs else calls,
+        degrade=deadline.degrade,
         attempts=[{"attempt_no": a.attempt_no, "stage": a.stage, "ok": a.ok,
                    "error_code": a.error_code,
                    "duration_ms": a.execution.duration_ms if a.execution else None}

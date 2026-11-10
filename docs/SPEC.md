@@ -1253,3 +1253,11 @@ CPU acceptance lives in `tests/unit/test_model_client.py`, using a real loopback
 
 Registers `E_REPLAY_MISS` (additive; `CONTRACTS_VERSION = "1.6.0"`). `ReplayModelClient` is keyed by the SHA-256 of the canonical HTTP request body that `HttpModelClient` would send for the active `model.*` config (so prompt, schema, sampling, `max_tokens` and thinking switch are all part of the key), which refines §5.10's "request_sha256". Replayed `ModelCall`s carry `backend="replay"`; the recorded backend is in `transport.recorded_backend`. New config keys `model.replay_path`, `model.record_path` and backend `replay` are development-only. Format: `datamate.model_calls.v1` (see `llm/replay.py`).
 
+### 18.8 M4-07 records (contracts 1.7.0)
+
+`LogRecord.degrade: bool = False` is added (additive, `CONTRACTS_VERSION = "1.7.0"`); `inputs` and `views_used` stay absent until helper calls / P2 views exist. `model.revision` is a new config key (recorded in run.json).
+
+**Bounded logs.** `ModelCall.transport.request_body` in `logs/questions.jsonl` is *compacted*: any message longer than 512 characters becomes `{"role", "content_sha256", "content_chars"}` and the response schema becomes `schema_sha256` (marker `transport.request_compacted = true`); the texts are written once to `logs/prompt_blobs.jsonl` (`{"sha256", "text"}`, sorted by hash). `request_sha256` still hashes the original body, so the request can be rebuilt from the blobs (tested). `content`, `reasoning`, `code`, `output` are never compacted. Without this a real business whose SchemaCard is ~370,000 characters would add that text to every call line.
+
+**run.json** now also carries `model` (path, served name, backend, revision, file sizes, hash of `SHA256SUMS` if shipped), `environment` (Python, platform, package versions read from metadata, GPUs from `nvidia-smi` or null, selected env vars, hash of `requirements.lock` and `BUILD_INFO.json` when present under `/code`), `timings` (`replica_load_ms`, `first_answer_ms`, `total_ms`), `degrade_activated_ms`, `replicas` (ports, GPUs, commands, restarts, events); `businesses.jsonl` rows carry `setup_ms`.
+
