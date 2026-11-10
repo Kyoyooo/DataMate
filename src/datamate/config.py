@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _Section(BaseModel):
@@ -59,6 +59,44 @@ class ModelConfig(_Section):
         return value.rstrip("/")
 
 
+class ServingConfig(_Section):
+    """vLLM replica launch (SPEC §7.13.1, TASKS M4-03). Owner: M4.
+
+    ``external``: servers are started by someone else (Colab, a developer) and
+    ``model.base_url`` is used as is. ``managed``: ``llm.replicas.ReplicaManager``
+    starts ``replicas`` loopback servers, one per GPU, from ``model.path``.
+    """
+
+    mode: Literal["external", "managed"] = "external"
+    replicas: int = Field(default=1, ge=1, le=2)
+    tensor_parallel_size: int = Field(default=1, ge=1, le=2)
+    gpu_ids: list[int] | None = None  # default: 0 .. replicas * tensor_parallel_size - 1
+    base_port: int = Field(default=8100, ge=1024, le=65000)
+    vllm_command: list[str] = ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+    dtype: str = "bfloat16"
+    max_model_len: int = Field(default=32768, ge=256)
+    gpu_memory_utilization: float = Field(default=0.90, gt=0, le=1)
+    max_num_seqs: int = Field(default=64, ge=1)
+    enable_prefix_caching: bool = True
+    reasoning_parser: str | None = None
+    quantization: str | None = None
+    extra_server_args: list[str] = []
+    startup_timeout_s: float = Field(default=900.0, gt=0, allow_inf_nan=False)
+    health_poll_interval_s: float = Field(default=2.0, gt=0, allow_inf_nan=False)
+    warmup_max_tokens: int = Field(default=8, ge=1)
+    max_restarts: int = Field(default=1, ge=0)
+    shutdown_timeout_s: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    env: dict[str, str] = {}  # extra environment for the server processes
+
+    @model_validator(mode="after")
+    def _gpus(self) -> ServingConfig:
+        need = self.replicas * self.tensor_parallel_size
+        if self.gpu_ids is not None and (len(self.gpu_ids) != need or len(set(self.gpu_ids)) != need
+                                         or min(self.gpu_ids) < 0):
+            raise ValueError(f"serving.gpu_ids must list {need} distinct non-negative GPU ids")
+        return self
+
+
 class SolverConfig(_Section):
     max_repairs: int = Field(default=1, ge=0)
 
@@ -88,6 +126,7 @@ class LoggingConfig(_Section):
 class RunConfig(_Section):
     work_dir: str = "/tmp/datamate"
     model: ModelConfig = ModelConfig()
+    serving: ServingConfig = ServingConfig()
     solver: SolverConfig = SolverConfig()
     exec_limits: ExecLimits = ExecLimits()
     decision: DecisionConfig = DecisionConfig()

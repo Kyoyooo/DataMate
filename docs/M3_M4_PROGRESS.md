@@ -18,3 +18,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
   - `.venv/bin/python -m datamate.run --dev --config config/dev.json --data-dir tests/fixtures/split_mini --result-dir <tmp>` → exit 0; scorer `PA = 1.0000 (n=13, correct=13, wrong=0, abstain=0)`
   - `.venv/bin/python -m datamate.run --config config/run_config.json ...` → `error: refusing to run: model.base_url is required for HTTP backend (M3-02)`, exit 2, no output directory
 - Needs: real vLLM call on GPU (Colab) re-confirmed by the lead; M4 review of `model.*` keys.
+
+### M4-03 replica manager — branch `m4/M4-03-replica-manager` (stacked on `m3/M3-02-http-client-rebased`: needs its config keys)
+- `src/datamate/llm/replicas.py`: `build_command` (SPEC §7.13.1 flags, pure), `build_env` (fixed env + `CUDA_VISIBLE_DEVICES`), `ReplicaManager` (`start`, `poll`, `restart` with budget, `stop`, `client_configs`, `record` for run.json). Config section `serving.*` (README table). Deviation from SPEC §6.2: the keys live in a new `serving` section, not under `model`, because `model` already follows the HTTP client's flat layout; contracts unchanged.
+- Tests: `tests/unit/test_replicas.py` + `tests/fixtures/fake_vllm_server.py` (stdlib fake server; same argv). `.venv/bin/python -m pytest -o addopts="" -q tests/unit/test_replicas.py` → `11 passed` (three consecutive runs).
+- Not observed: a real vLLM start. `--no-enable-prefix-caching`, `--generation-config vllm` spellings are [VERIFY] against the pinned vLLM (SPEC §7.13.1). Needs: Colab/E5 run with `serving.mode=managed`.
