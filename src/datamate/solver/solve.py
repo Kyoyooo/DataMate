@@ -24,7 +24,7 @@ from datamate.contracts import (
     TimeWindow,
     codes,
 )
-from datamate.llm import ModelClient
+from datamate.llm import NO_DEADLINE, Deadline, ModelClient
 from datamate.prompts import render_repair, render_solve
 from datamate.sandbox import run_sql
 from datamate.solver.sql_rules import check_sql
@@ -35,15 +35,20 @@ REPAIR_TEMPLATE = "repair.sql.v1"
 
 
 def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: BusinessCatalog,
-          split: SplitContext, client: ModelClient, cfg: RunConfig) -> list[SolverAttempt]:
+          split: SplitContext, client: ModelClient, cfg: RunConfig,
+          deadline: Deadline = NO_DEADLINE) -> list[SolverAttempt]:
     attempts: list[SolverAttempt] = []
     messages = render_solve(q, frame, windows, split, cat)
     stage, template = "solve", SOLVE_TEMPLATE
     for attempt_no in range(1, cfg.solver.max_repairs + 2):
+        if deadline.hard_expired:  # hard deadline / global stop: the pipeline abstains (E_DEADLINE)
+            break
+        remaining = deadline.remaining_s()
         call = client.complete(
             stage=stage, template_id=template, messages=messages,
             json_schema=SolverOutput.model_json_schema(),
             max_tokens=cfg.model.max_tokens[stage], call_id=f"{q.id}:{stage}:{attempt_no}",
+            timeout_s=None if remaining == float("inf") else remaining,
         )
         output = execution = value = None
         error_code: str | None
@@ -72,6 +77,8 @@ def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: Bus
         # repaired: they are signals about the data, not about SQL syntax.
         if ok or call.error or error_code in (codes.E_EMPTY_RESULT, codes.D_IMPLAUSIBLE):
             break
+        if deadline.soft_expired or deadline.degrade:
+            break  # soft deadline / degrade mode (SPEC §7.12): no new repair starts
         messages = render_repair(messages, call.content, error_code, error_text)
         stage, template = "repair", REPAIR_TEMPLATE
     return attempts

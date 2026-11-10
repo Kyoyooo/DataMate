@@ -1237,3 +1237,15 @@ The versioned `timeref.v1` adapter copies the source schema, makes each time-exp
 CPU acceptance lives in `tests/unit/test_model_client.py`, using a real loopback fake server. It covers explicit fields, exact generated text/reasoning, canonical hashes, schema adaptation, retry/timeout, error envelopes, redirects/proxy isolation, concurrent callers and the fixture pipeline. `notebooks/M3_02_HTTP_CLIENT_CHECK.ipynb` reruns those checks by criterion and records an optional real vLLM call. Real GPU acceptance and M3-13 replay remain pending until observed evidence exists.
 
 **Observed local verification (2026-11-09).** With `PYTHONPATH=src`, `.venv/Scripts/python -m pytest -ra -p no:cacheprovider` completed with **214 passed, 2 skipped** (training-reference checks skipped because `train/answers.jsonl` is absent). `.venv/Scripts/python -m ruff check src tests --no-cache` reported **All checks passed**. The notebook's CPU test/report cells were executed locally after substituting the existing checkout/environment for Colab clone/install: all **37 focused M3-02 acceptance cases** passed, regression/lint checks ran, CSV/JSON/conclusion exports were verified, and the disabled live-model branch remained **NOT VERIFIED**. The notebook JSON and all code-cell syntax were validated. No vLLM/GPU call was executed in this verification.
+
+### 18.6 M4-05 orchestrator and contracts 1.5.0 (2026-11-11)
+
+**Contract change (additive, minor).** `contracts/codes.py` registers `E_DEADLINE`, `E_GLOBAL_STOP` (both already named in §10.2) and `E_REPLICA_DOWN` (no model replica available; the all-abstain submission written when servers cannot start or all replicas die). `CONTRACTS_VERSION = "1.5.0"`.
+
+**Non-contract interface changes.** `ModelClient.complete` gains an optional `timeout_s` (caps one call below `model.model_call_timeout_s`; used to enforce question deadlines). `llm.Deadline` / `DeadlineExceeded` / `NO_DEADLINE` are new public names; `parse_question`, `solve` and `answer_question` take an optional `deadline`. New config sections `serving`, `concurrency`, `deadlines` (README table). Deviations from §6.2/§7.12, all deliberate:
+- Serving keys live in a `serving` section, not under `model`.
+- Business setup runs in a **thread** pool (`concurrency.setup_workers`), not a spawn process pool; M1 may switch the executor if ingestion proves GIL-bound.
+- Hard deadlines are enforced cooperatively (each call is capped to the remaining question time; no thread is killed), so a worker is occupied at most until its capped call returns.
+- Records are appended in completion order while the run is live and re-ordered at finalization (`ResultWriter.finalize_canonical`: rows rejected at input first, then questions by input line), so `submission.jsonl` bytes do not depend on worker count or scheduling (D2, D13). `questions.jsonl` is re-ordered the same way.
+- `sandbox.execute.open_readonly` tolerates DuckDB's per-process shared instance already being config-locked (needed once questions run concurrently). Real isolation is M3-07.
+

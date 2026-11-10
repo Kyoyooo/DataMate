@@ -7,7 +7,8 @@ One small protocol. Every implementation must:
 - send every decoding parameter explicitly and echo it in ``ModelCall.params``.
 
 Calls are synchronous. Concurrency (one thread per in-flight question) is the
-orchestrator's job (TASKS M4-05); see SPEC §18 DC-5.
+orchestrator's job (TASKS M4-05); see SPEC §18 DC-5. ``timeout_s`` (optional) caps
+this call below the configured per-call timeout so a question deadline is honored.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ class ModelClient(Protocol):
 
     def complete(self, *, stage: Stage, template_id: str, messages: list[dict[str, str]],
                  json_schema: dict[str, Any] | None, max_tokens: int,
-                 call_id: str) -> ModelCall: ...
+                 call_id: str, timeout_s: float | None = None) -> ModelCall: ...
 
 
 def request_sha256(messages: list[dict[str, str]], params: dict[str, Any],

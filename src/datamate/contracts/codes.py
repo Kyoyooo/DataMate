@@ -39,6 +39,9 @@ E_NO_SUCCESS = "E_NO_SUCCESS"
 # Runtime (runtime/)
 E_INTERNAL = "E_INTERNAL"
 E_DUPLICATE_WRITE = "E_DUPLICATE_WRITE"
+E_DEADLINE = "E_DEADLINE"  # question hard deadline (runtime/)
+E_GLOBAL_STOP = "E_GLOBAL_STOP"  # global time limit or SIGTERM: id written as abstain at finalization
+E_REPLICA_DOWN = "E_REPLICA_DOWN"  # no model replica available (runtime/)
 
 # Warnings: recorded, never decide an outcome by themselves (SPEC §10.1).
 # A warning string is "<CODE>" or "<CODE> <detail>".
