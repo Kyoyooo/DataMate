@@ -14,9 +14,8 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _Section(BaseModel):
@@ -25,100 +24,13 @@ class _Section(BaseModel):
 
 class ModelConfig(_Section):
     # "scripted" is development-only and is rejected outside --dev (run.py).
-    # Serving is external to the client; M4 owns server launch and health checks.
-    backend: Literal["scripted", "http", "replay"] = "http"
+    # "http" is the production client (TASKS M3-02); it is not implemented yet.
+    backend: Literal["scripted", "http"] = "http"
     script_path: str | None = None  # scripted backend only
-    replay_path: str | None = None  # replay backend only (dev/CI): recorded calls JSONL
-    record_path: str | None = None  # dev only: also record every call to this JSONL file
     path: str | None = None  # local model directory (production)
-    revision: str | None = None  # fixed model revision (commit hash); recorded in run.json
-    base_url: str | None = None  # e.g. http://127.0.0.1:8000/v1; required for http
-    served_model_name: str = Field(default="datamate", min_length=1)
-    model_call_timeout_s: float = Field(default=120.0, gt=0, allow_inf_nan=False)
-    schema_adapter: Literal["timeref.v1", "none"] = "timeref.v1"
-    temperature: float = Field(default=0.0, ge=0, allow_inf_nan=False)
-    top_p: float = Field(default=1.0, gt=0, le=1)
-    top_k: int = Field(default=-1, ge=-1)
-    min_p: float = Field(default=0.0, ge=0, le=1)
-    presence_penalty: float = Field(default=0.0, ge=-2, le=2)
-    frequency_penalty: float = Field(default=0.0, ge=-2, le=2)
-    repetition_penalty: float = Field(default=1.0, gt=0, allow_inf_nan=False)
-    enable_thinking: dict[str, bool] = {"parse": False, "solve": False, "repair": False}
+    temperature: float = 0.0
     seed: int = 20261116
     max_tokens: dict[str, int] = {"parse": 1024, "solve": 2048, "repair": 2048}
-
-    @field_validator("base_url")
-    @classmethod
-    def _local_endpoint(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        parsed = urlsplit(value)
-        if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "::1", "localhost"}
-                or parsed.username is not None or parsed.password is not None
-                or parsed.query or parsed.fragment or parsed.path.rstrip("/") not in {"", "/v1"}):
-            raise ValueError("model.base_url must be loopback HTTP, optionally ending in /v1")
-        if parsed.port is not None and not 1 <= parsed.port <= 65535:
-            raise ValueError("model.base_url has an invalid port")
-        return value.rstrip("/")
-
-
-class ServingConfig(_Section):
-    """vLLM replica launch (SPEC §7.13.1, TASKS M4-03). Owner: M4.
-
-    ``external``: servers are started by someone else (Colab, a developer) and
-    ``model.base_url`` is used as is. ``managed``: ``llm.replicas.ReplicaManager``
-    starts ``replicas`` loopback servers, one per GPU, from ``model.path``.
-    """
-
-    mode: Literal["external", "managed"] = "external"
-    replicas: int = Field(default=1, ge=1, le=2)
-    tensor_parallel_size: int = Field(default=1, ge=1, le=2)
-    gpu_ids: list[int] | None = None  # default: 0 .. replicas * tensor_parallel_size - 1
-    base_port: int = Field(default=8100, ge=1024, le=65000)
-    vllm_command: list[str] = ["python3", "-m", "vllm.entrypoints.openai.api_server"]
-    dtype: str = "bfloat16"
-    max_model_len: int = Field(default=32768, ge=256)
-    gpu_memory_utilization: float = Field(default=0.90, gt=0, le=1)
-    max_num_seqs: int = Field(default=64, ge=1)
-    enable_prefix_caching: bool = True
-    reasoning_parser: str | None = None
-    quantization: str | None = None
-    extra_server_args: list[str] = []
-    startup_timeout_s: float = Field(default=900.0, gt=0, allow_inf_nan=False)
-    health_poll_interval_s: float = Field(default=2.0, gt=0, allow_inf_nan=False)
-    warmup_max_tokens: int = Field(default=8, ge=1)
-    max_restarts: int = Field(default=1, ge=0)
-    shutdown_timeout_s: float = Field(default=30.0, gt=0, allow_inf_nan=False)
-    env: dict[str, str] = {}  # extra environment for the server processes
-
-    @model_validator(mode="after")
-    def _gpus(self) -> ServingConfig:
-        need = self.replicas * self.tensor_parallel_size
-        if self.gpu_ids is not None and (len(self.gpu_ids) != need or len(set(self.gpu_ids)) != need
-                                         or min(self.gpu_ids) < 0):
-            raise ValueError(f"serving.gpu_ids must list {need} distinct non-negative GPU ids")
-        return self
-
-
-class ConcurrencyConfig(_Section):
-    """SPEC §6.2. Fixed per run; never tuned at run time (determinism D2)."""
-
-    questions_per_replica: int = Field(default=24, ge=1)  # worker threads per replica
-    setup_workers: int = Field(default=8, ge=1)  # business setup (ingestion) threads
-
-
-class DeadlinesConfig(_Section):
-    question_soft_s: float = Field(default=120.0, gt=0, allow_inf_nan=False)  # no new repair after
-    question_hard_s: float = Field(default=300.0, gt=0, allow_inf_nan=False)  # abstain E_DEADLINE
-    global_hard_stop_s: float = Field(default=19800.0, gt=0, allow_inf_nan=False)  # 5 h 30
-    degrade_if_projected_finish_s: float = Field(default=14400.0, gt=0, allow_inf_nan=False)
-    progress_interval_s: float = Field(default=60.0, gt=0, allow_inf_nan=False)
-
-    @model_validator(mode="after")
-    def _order(self) -> DeadlinesConfig:
-        if self.question_soft_s > self.question_hard_s:
-            raise ValueError("deadlines.question_soft_s must not exceed question_hard_s")
-        return self
 
 
 class SolverConfig(_Section):
@@ -150,9 +62,6 @@ class LoggingConfig(_Section):
 class RunConfig(_Section):
     work_dir: str = "/tmp/datamate"
     model: ModelConfig = ModelConfig()
-    serving: ServingConfig = ServingConfig()
-    concurrency: ConcurrencyConfig = ConcurrencyConfig()
-    deadlines: DeadlinesConfig = DeadlinesConfig()
     solver: SolverConfig = SolverConfig()
     exec_limits: ExecLimits = ExecLimits()
     decision: DecisionConfig = DecisionConfig()

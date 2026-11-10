@@ -45,13 +45,7 @@ def open_readonly(db_path: str, limits: ExecLimits) -> duckdb.DuckDBPyConnection
         "autoinstall_known_extensions": False,
         "autoload_known_extensions": False,
     })
-    try:
-        con.execute("SET lock_configuration = true")
-    except duckdb.InvalidInputException as exc:
-        # DuckDB shares one database instance per file within a process; a concurrent
-        # caller (orchestrator worker threads) finds it already locked with the same config.
-        if "locked" not in str(exc):
-            raise
+    con.execute("SET lock_configuration = true")
     return con
 
 
