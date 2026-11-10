@@ -7,6 +7,13 @@ from datamate.llm.client import ModelClient, request_sha256
 from datamate.llm.http import HttpModelClient, http_request_sha256
 from datamate.llm.schema import SCHEMA_ADAPTER_VERSION, schema_for_vllm
 from datamate.llm.scripted import ScriptedModelClient
+from datamate.llm.server_config import server_arguments
+from datamate.llm.tokenizer import (
+    DevelopmentTokenCounter,
+    LocalTokenCounter,
+    TokenCounter,
+    get_token_counter,
+)
 
 
 class ProductionGuardError(RuntimeError):
@@ -29,4 +36,5 @@ def make_client(cfg: ModelConfig, *, dev: bool) -> ModelClient:
 
 __all__ = ["HttpModelClient", "ModelClient", "ProductionGuardError", "SCHEMA_ADAPTER_VERSION",
            "ScriptedModelClient", "http_request_sha256", "make_client", "request_sha256",
-           "schema_for_vllm"]
+           "schema_for_vllm", "DevelopmentTokenCounter", "LocalTokenCounter", "TokenCounter",
+           "get_token_counter", "server_arguments"]

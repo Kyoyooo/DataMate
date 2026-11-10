@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.2.0"  # additive M3-02 ModelCall transport evidence
+CONTRACTS_VERSION = "1.3.0"  # additive M3-03 prompt preparation/evidence
 
 
 class Contract(BaseModel):
@@ -300,6 +300,14 @@ class TimeWindow(Contract):
 # --------------------------------------------------------------------------- model calls
 
 
+class PromptPlan(Contract):
+    """Prepared messages and factual budget evidence; no inference has happened yet."""
+
+    messages: list[dict[str, str]]
+    error_code: str | None = None
+    diagnostics: dict[str, Any] = {}
+
+
 class ModelCall(Contract):
     """One model call, captured exactly (SPEC §5.7). Errors are values, never raised."""
 
@@ -315,6 +323,7 @@ class ModelCall(Contract):
     latency_ms: int = Field(ge=0)
     error: str | None = None
     transport: dict[str, Any] | None = None  # optional HTTP request/response/error evidence
+    prompt_budget: dict[str, Any] | None = None
 
 
 class SolverOutput(Contract):

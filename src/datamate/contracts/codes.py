@@ -18,6 +18,7 @@ E_BUSINESS_SETUP = "E_BUSINESS_SETUP"  # catalog/
 
 # Parse and time (parse/, temporal/)
 E_PARSE_INVALID = "E_PARSE_INVALID"
+E_CONTEXT_OVERFLOW = "E_CONTEXT_OVERFLOW"  # prompt cannot fit without losing mandatory context
 E_TIME_UNSUPPORTED = "E_TIME_UNSUPPORTED"
 
 # Model calls (llm/)

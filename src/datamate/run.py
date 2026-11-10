@@ -40,8 +40,8 @@ from datamate.contracts import (
     codes,
 )
 from datamate.lexicon import nfc
-from datamate.llm import ModelClient, ProductionGuardError, make_client
-from datamate.prompts import template_sha256
+from datamate.llm import ModelClient, ProductionGuardError, get_token_counter, make_client
+from datamate.prompts import BUDGET_POLICY_VERSION, template_sha256
 from datamate.rules import load_split
 from datamate.runtime import ResultWriter, answer_question
 
@@ -141,6 +141,8 @@ def run(cfg: RunConfig, client: ModelClient, data_dir: Path, result_dir: Path, *
         "config": cfg.model_dump(mode="json"),
         "config_sha256": cfg.sha256(),
         "template_sha256": template_sha256(),
+        "prompt_budget_policy": BUDGET_POLICY_VERSION,
+        "tokenizer": get_token_counter(cfg).fingerprint,
         "split": {"rulebook_sha256": split.rulebook_sha256,
                   "temporal_params": split.temporal.model_dump(mode="json"),
                   "warnings": split.warnings},
@@ -170,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         cfg = load_config(args.config, args.overrides)
         client = make_client(cfg.model, dev=args.dev)
+        get_token_counter(cfg)  # fail before result files are opened if the local tokenizer is missing
         if not (args.data_dir / "questions.jsonl").is_file():
             raise FileNotFoundError(f"{args.data_dir / 'questions.jsonl'} not found")
     except (ProductionGuardError, NotImplementedError, ValidationError, ValueError, OSError) as exc:

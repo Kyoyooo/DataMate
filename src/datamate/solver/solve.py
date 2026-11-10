@@ -5,8 +5,8 @@ On failure, up to ``solver.max_repairs`` repair turns are appended to the same
 conversation with the error code and text. Every attempt is returned (and
 logged), successful or not.
 
-Deferred (TASKS M3-05, M3-10, M3-11): context budgeting, few-shot selection,
-Python fallback, soft deadlines.
+Prompt budgeting runs before every call, including the complete repair history.
+Deferred (TASKS M3-05, M3-10, M3-11): few-shot selection, Python fallback, soft deadlines.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from datamate.contracts import (
     codes,
 )
 from datamate.llm import ModelClient
-from datamate.prompts import render_repair, render_solve
+from datamate.prompts import complete_prompt, prepare_solve, render_repair
 from datamate.sandbox import run_sql
 from datamate.solver.sql_rules import check_sql
 from datamate.solver.typed import to_typed_value
@@ -37,13 +37,14 @@ REPAIR_TEMPLATE = "repair.sql.v1"
 def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: BusinessCatalog,
           split: SplitContext, client: ModelClient, cfg: RunConfig) -> list[SolverAttempt]:
     attempts: list[SolverAttempt] = []
-    messages = render_solve(q, frame, windows, split, cat)
+    history: list[dict[str, str]] = []
     stage, template = "solve", SOLVE_TEMPLATE
     for attempt_no in range(1, cfg.solver.max_repairs + 2):
-        call = client.complete(
-            stage=stage, template_id=template, messages=messages,
+        plan = prepare_solve(q, frame, windows, split, cat, cfg, stage=stage, history=history)
+        call = complete_prompt(
+            plan, client, cfg, stage=stage, template_id=template,
             json_schema=SolverOutput.model_json_schema(),
-            max_tokens=cfg.model.max_tokens[stage], call_id=f"{q.id}:{stage}:{attempt_no}",
+            call_id=f"{q.id}:{stage}:{attempt_no}",
         )
         output = execution = value = None
         error_code: str | None
@@ -72,6 +73,6 @@ def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: Bus
         # repaired: they are signals about the data, not about SQL syntax.
         if ok or call.error or error_code in (codes.E_EMPTY_RESULT, codes.D_IMPLAUSIBLE):
             break
-        messages = render_repair(messages, call.content, error_code, error_text)
+        history.extend(render_repair([], call.content, error_code, error_text))
         stage, template = "repair", REPAIR_TEMPLATE
     return attempts

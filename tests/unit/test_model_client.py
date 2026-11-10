@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from datamate.config import ModelConfig, RunConfig
 from datamate.contracts import ModelCall, QuestionFrame, SolverOutput, codes
 from datamate.llm import (
+    DevelopmentTokenCounter,
     HttpModelClient,
     ProductionGuardError,
     http_request_sha256,
@@ -297,7 +298,9 @@ def test_shared_client_can_serve_concurrent_callers(http_server):
     assert all(r.error is None for r in results)
 
 
-def test_http_pipeline_executes_real_sql_and_logs_reasoning(http_server, split, catalog, cfg):
+def test_http_pipeline_executes_real_sql_and_logs_reasoning(http_server, split, catalog, cfg, monkeypatch):
+    # This transport integration test does not load real tokenizer assets.
+    monkeypatch.setattr("datamate.prompts.budget.get_token_counter", lambda cfg: DevelopmentTokenCounter())
     text = "Tháng này có bao nhiêu dòng hàng?"
     frame = {"expected_type": "number", "numeric_kind": "count", "time": [
         {"span": "Tháng này", "expr": {"kind": "relative_period", "unit": "month", "offset": 0}}]}

@@ -1,0 +1,25 @@
+{
+  "model": {
+    "max_tokens": {"parse": 1024, "solve": 2048, "repair": 2048},
+    "enable_thinking": {"parse": false, "solve": false, "repair": false}
+  },
+  "serving": {
+    "max_model_len": 8192,
+    "max_num_seqs": 4,
+    "max_num_batched_tokens": 8192,
+    "gpu_memory_utilization": 0.9,
+    "target_executor_gib": 28.8,
+    "dtype": "bfloat16",
+    "prefix_caching": true,
+    "chunked_prefill": true,
+    "reasoning_parser": "qwen3"
+  },
+  "prompt_budget": {
+    "safety_margin_tokens": 64,
+    "context_budget_tokens": null,
+    "readme_budget_tokens": 512,
+    "schema_card_budget_tokens": 3000,
+    "relevant_tables": 4
+  },
+  "solver": {"max_repairs": 1}
+}

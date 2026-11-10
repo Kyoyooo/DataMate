@@ -6,8 +6,8 @@ appear in the question (compared after ``fold``); a span the model invented is
 treated as invalid output rather than silently dropped, because dropping a
 time constraint would change the meaning of the question.
 
-Deferred (TASKS M3-04): abbreviation normalization ("dthu", "sp", "dc"),
-JSON-schema-constrained decoding, few-shot examples.
+M3-03 prepares and budgets context before the client call; M3-02 sends the schema.
+Deferred (TASKS M3-04): abbreviation normalization ("dthu", "sp", "dc"), few-shot examples.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from datamate.contracts import (
 )
 from datamate.lexicon import fold
 from datamate.llm import ModelClient
-from datamate.prompts import render_parse
+from datamate.prompts import complete_prompt, prepare_parse
 
 TEMPLATE_ID = "parse.frame.v3"
 
@@ -33,10 +33,11 @@ TEMPLATE_ID = "parse.frame.v3"
 def parse_question(q: Question, split: SplitContext, cat: BusinessCatalog, client: ModelClient,
                    cfg: RunConfig) -> tuple[QuestionFrame | None, ModelCall, str | None]:
     """Return (frame, call, error_code). ``frame`` is None iff ``error_code`` is set."""
-    call = client.complete(
-        stage="parse", template_id=TEMPLATE_ID, messages=render_parse(q, split, cat),
+    plan = prepare_parse(q, split, cat, cfg)
+    call = complete_prompt(
+        plan, client, cfg, stage="parse", template_id=TEMPLATE_ID,
         json_schema=QuestionFrame.model_json_schema(),
-        max_tokens=cfg.model.max_tokens["parse"], call_id=f"{q.id}:parse:1",
+        call_id=f"{q.id}:parse:1",
     )
     if call.error:
         return None, call, call.error

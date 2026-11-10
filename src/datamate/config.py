@@ -1,6 +1,6 @@
 """Run configuration (SPEC §6, P1 subset). Owner: M4.
 
-One JSON file is the only source of tunable values. Unknown keys are errors;
+JSON profiles may extend a shared JSON file. Unknown keys are errors;
 missing keys take the defaults below. ``config_sha256`` hashes the effective
 configuration (defaults filled) so run records can be compared.
 
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _Section(BaseModel):
@@ -63,6 +63,28 @@ class SolverConfig(_Section):
     max_repairs: int = Field(default=1, ge=0)
 
 
+class ServingConfig(_Section):
+    """Shared limits: consumed by prompt budgeting and M4's server launch adapter."""
+
+    max_model_len: int = Field(default=8192, gt=0)
+    max_num_seqs: int = Field(default=4, gt=0)
+    max_num_batched_tokens: int = Field(default=8192, gt=0)
+    gpu_memory_utilization: float = Field(default=0.90, gt=0, le=1)
+    target_executor_gib: float = Field(default=28.8, gt=0, allow_inf_nan=False)
+    dtype: str = "bfloat16"
+    prefix_caching: bool = True
+    chunked_prefill: bool = True
+    reasoning_parser: str = "qwen3"
+
+
+class PromptBudgetConfig(_Section):
+    safety_margin_tokens: int = Field(default=64, ge=0)
+    context_budget_tokens: int | None = Field(default=None, gt=0)  # optional input-only cap
+    readme_budget_tokens: int = Field(default=512, ge=0)
+    schema_card_budget_tokens: int = Field(default=3000, gt=0)
+    relevant_tables: int = Field(default=4, gt=0)
+
+
 class ExecLimits(_Section):
     sql_timeout_s: float = 20.0
     max_result_rows: int = 1000
@@ -89,10 +111,27 @@ class RunConfig(_Section):
     work_dir: str = "/tmp/datamate"
     model: ModelConfig = ModelConfig()
     solver: SolverConfig = SolverConfig()
+    serving: ServingConfig = ServingConfig()
+    prompt_budget: PromptBudgetConfig = PromptBudgetConfig()
     exec_limits: ExecLimits = ExecLimits()
     decision: DecisionConfig = DecisionConfig()
     formatting: FormattingConfig = FormattingConfig()
     logging: LoggingConfig = LoggingConfig()
+
+    @model_validator(mode="after")
+    def _context_limits(self) -> RunConfig:
+        if not {"parse", "solve", "repair"} <= self.model.max_tokens.keys():
+            raise ValueError("model.max_tokens must define parse, solve and repair")
+        if any(n <= 0 or n + self.prompt_budget.safety_margin_tokens >= self.serving.max_model_len
+               for n in self.model.max_tokens.values()):
+            raise ValueError("each output budget must leave room for prompt + safety margin")
+        return self
+
+    def input_budget(self, stage: str) -> int:
+        limit = (self.serving.max_model_len - self.model.max_tokens[stage]
+                 - self.prompt_budget.safety_margin_tokens)
+        cap = self.prompt_budget.context_budget_tokens
+        return min(limit, cap) if cap is not None else limit
 
     def sha256(self) -> str:
         canonical = json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
@@ -117,10 +156,36 @@ def load_config(path: str | Path | None, overrides: list[str] | None = None) -> 
     """Load a config file (or defaults if ``path`` is None) and apply ``key=value`` overrides."""
     tree: dict[str, Any] = {}
     if path is not None:
-        tree = json.loads(Path(path).read_text(encoding="utf-8"))
+        tree = _read_config(Path(path), set())
     for item in overrides or []:
         if "=" not in item:
             raise ValueError(f"override must be key=value, got {item!r}")
         key, raw = item.split("=", 1)
         _apply_override(tree, key.strip(), raw)
     return RunConfig.model_validate(tree)
+
+
+def _read_config(path: Path, ancestors: set[Path]) -> dict[str, Any]:
+    path = path.resolve()
+    if path in ancestors or len(ancestors) >= 16:
+        raise ValueError("cyclic or excessively deep config extends")
+    tree = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(tree, dict):
+        raise ValueError("config must be a JSON object")
+    parent = tree.pop("extends", None)
+    if parent is None:
+        return tree
+    if not isinstance(parent, str) or not parent:
+        raise ValueError("extends must name a config file relative to this file")
+    base = _read_config(path.parent / parent, ancestors | {path})
+    return _merge_config(base, tree)
+
+
+def _merge_config(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_config(result[key], value)
+        else:
+            result[key] = value
+    return result

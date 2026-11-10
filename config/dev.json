@@ -1,4 +1,5 @@
 {
+  "extends": "runtime_defaults.json",
   "work_dir": "out/work",
   "model": {
     "backend": "scripted",
