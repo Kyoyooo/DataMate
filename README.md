@@ -65,7 +65,7 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 | `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | HTTP + dev scripted clients; in-process executor |
 | `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | sequential; no serving, no image |
 
-Planned packages, created only when their task starts: `entities/` (M1-12, P2), `semantics/` (M1-13, P2), `llm/replay.py` (M3-13), `llm/replicas.py` (M4-03), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
+Planned packages, created only when their task starts: `entities/` (M1-12, P2), `semantics/` (M1-13, P2), `llm/replay.py` (M3-13), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
 
 ## Configuration
 
@@ -84,6 +84,14 @@ One JSON file; unknown keys are errors; missing keys take defaults from `src/dat
 | `model.enable_thinking` | parse/solve/repair false | Per-stage switch; M4 must configure the matching reasoning parser |
 | `model.script_path` | `null` | Scripted responses (JSONL) for the dev backend |
 | `model.max_tokens` | parse 1024, solve/repair 2048 | Per-stage limits |
+| `serving.mode` | `external` | `external`: use `model.base_url` (Colab, manual `vllm serve`); `managed`: `llm.replicas.ReplicaManager` starts the loopback servers from `model.path` |
+| `serving.replicas` / `tensor_parallel_size` / `gpu_ids` | 1 / 1 / `null` | One server per GPU (`CUDA_VISIBLE_DEVICES`); `gpu_ids` default `0 … replicas×tp−1` |
+| `serving.base_port` | 8100 | Replica `i` listens on `127.0.0.1:base_port+i` |
+| `serving.vllm_command` | `python3 -m vllm.entrypoints.openai.api_server` | Launch command (tests substitute a fake server) |
+| `serving.dtype` / `max_model_len` / `gpu_memory_utilization` / `max_num_seqs` | bfloat16 / 32768 / 0.90 / 64 | Server flags (SPEC §7.13.1); never tuned at run time |
+| `serving.enable_prefix_caching` / `reasoning_parser` / `quantization` / `extra_server_args` | true / null / null / [] | Further server flags |
+| `serving.startup_timeout_s` / `health_poll_interval_s` / `warmup_max_tokens` | 900 / 2 / 8 | `GET /health` polling, then one fixed warm-up request |
+| `serving.max_restarts` / `shutdown_timeout_s` / `env` | 1 / 30 / {} | Restart budget per replica; SIGTERM→SIGKILL grace; extra server environment |
 | `solver.max_repairs` | 1 | Repair turns after a failed SQL attempt |
 | `exec_limits.sql_timeout_s` / `max_result_rows` / `memory_limit_mb` | 20 / 1000 / 4096 | Executor limits |
 | `decision.zero_coverage` | `unanswerable` | What to emit when a period has no data (rulebook §7) |
