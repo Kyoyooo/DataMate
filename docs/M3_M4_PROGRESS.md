@@ -67,3 +67,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 - `sandbox/pool.py`, `SqlExecutor` threaded through solver → pipeline → orchestrator → `run.main`, `exec_limits.{isolation,workers,kill_grace_s}`, `E_EXEC_CRASH` (contracts **1.9.0**), SPEC §18.10.
 - `.venv/bin/pytest -o addopts="" -q` → all pass; `tests/unit/test_sandbox_pool.py` 9 passed (≈8 s). RLIMIT_AS verified only through the memory-bomb behaviour (either `E_SQL_EXEC` from DuckDB's limit or `E_EXEC_CRASH`; both accepted, pool recovers).
 - Not done: Python fallback executor (M3-11), RLIMIT value on the 8 GB production setting not exercised, behaviour under `--network none` irrelevant (no sockets used).
+
+### M3-04/05/10 prompts v2 and few-shot bank — branch `m3/M3-04-prompts-fewshot` (stacked on `m3/M3-07-sandbox-pool`)
+- `prompts/templates.py` (v2, v1 untouched and hash-pinned), `solver/fewshot.py`, `training_code/data_generation/build_fewshot.py`, `ContextBuilder.fit_fewshot`, pipeline/orchestrator/run wiring, `solver.template_version|fewshot_bank_path|fewshot_exclude_businesses`, SPEC §18.11. Default behaviour unchanged (v1, no bank).
+- Tests: `tests/unit/test_prompts_fewshot.py` (8). Full suite passes.
+- **No accuracy claim**: v2 and few-shot were never run against a model. Needs Colab: run the training split with v1 and v2, compare held-out PA by business fold (M3-09 gate), then build the bank from the better run.

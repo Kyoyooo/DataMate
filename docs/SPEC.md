@@ -1269,3 +1269,7 @@ Registers `E_CONTEXT_OVERFLOW` (named in §10.2; `CONTRACTS_VERSION = "1.8.0"`).
 
 Registers `E_EXEC_CRASH` (`CONTRACTS_VERSION = "1.9.0"`). `exec_limits` gains `isolation` (`process` | `inprocess`; `process` is the default and what `run.main` uses), `workers` (§7.8 `sandbox_workers`, default 16) and `kill_grace_s`. Deviation from §7.8: results cross the pipe as pickled `ExecutionResult` objects (exact for Decimal/int/str/bool/date), not as tagged JSON; DOUBLE is still converted with `Decimal(repr(x))` inside the worker. The worker's own interrupt answers `E_SQL_TIMEOUT` at `sql_timeout_s`; the parent SIGKILLs a worker that has not answered `kill_grace_s` later. `run()` called directly (tests) executes in process unless an `executor` is passed. Python fallback (§7.8, M3-11) is not part of this pool yet.
 
+### 18.11 M3-04/05/10 prompts v2 and few-shot bank (no contract change)
+
+New template ids `solve.sql.v2`, `repair.sql.v2` (v1 unchanged; its SHA-256 is pinned by a test). `solver.template_version` (`v1` default | `v2`) selects them; `solver.fewshot_bank_path` and `solver.fewshot_exclude_businesses` (leakage guard, dev folds only) control few-shot examples, which are rendered into the **question block** of v2 so the business-level prefix stays cacheable and byte-identical. The bank selector uses a dependency-free token-set Jaccard instead of rapidfuzz (§7.7.2) with the same tie-break rule. The bank file is generated, never hand-written.
+

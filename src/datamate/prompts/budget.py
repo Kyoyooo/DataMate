@@ -75,7 +75,16 @@ class ContextBuilder:
         return self._readme_cache[key] or None
 
     def _system_tokens(self, split: SplitContext, cat: BusinessCatalog) -> int:
-        return count_tokens(self.tok, render_solve_system(split, cat))
+        template = "solve.sql.v2" if self.cfg.template_version == "v2" else "solve.sql.v1"
+        return count_tokens(self.tok, render_solve_system(split, cat, template))
+
+    def fit_fewshot(self, plan: ContextPlan, blocks: list[str]) -> list[str]:
+        """Few-shot blocks chosen after parsing: keep the longest prefix that still fits (SPEC §7.7.1)."""
+        kept = list(blocks[: self.cfg.fewshot_k])
+        base = plan.system_tokens + self.cfg.question_block_reserve_tokens
+        while kept and base + sum(count_tokens(self.tok, b) for b in kept) > self.cfg.context_budget_tokens:
+            kept.pop()
+        return kept
 
     def plan(self, q: Question, split: SplitContext, cat: BusinessCatalog,
              fewshot: list[str] | None = None) -> ContextPlan:

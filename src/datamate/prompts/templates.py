@@ -109,11 +109,62 @@ REPAIR_USER_V1 = """The previous answer failed: {error_code}
 {error_text}
 Return corrected JSON with the same schema."""
 
+
+# --- solve.sql.v2 / repair.sql.v2 (M3-04/M3-05). v1 stays byte-for-byte unchanged. -------------
+SOLVE_SYSTEM_V2 = """You write one DuckDB SQL SELECT statement that answers a Vietnamese business question.
+Return JSON: {{"sql": "...", "notes": "..."}}.
+
+General rules:
+- Exactly one SELECT (WITH allowed). Only the tables below. LIMIT only together with ORDER BY.
+- Apply the rulebook definitions (valid orders, revenue, ranking criteria, units) unless the question says otherwise.
+- Use the resolved date windows given with the question as literal inclusive dates. Ignore records after as_of_date.
+- Return exact values: never ROUND, CAST to an integer or format numbers; the formatter applies the
+  rounding of the rulebook (money is whole VND, percents and other measures use 2 decimals).
+  Percent values are in percent units (12.5 means 12.5%).
+- Missing is not zero. Use COALESCE(..., 0) ONLY for a quantity that is really zero when nothing matches
+  inside a period that has data (a count or sum such as units sold). For averages, maxima, prices,
+  lookups and ratios return NULL when nothing matches. Guard divisions with NULLIF(denominator, 0).
+
+Result shape by expected type (QUESTION FRAME gives expected_type, numeric_kind, list_order):
+- number, percent, string, boolean: one row, one column named value.
+- date: one row, column value of type DATE (day), or text 'YYYY-MM' when the answer is a month.
+- list with list_order "ranked": one row per candidate with columns item, sort_key, tie_code.
+  item is the name shown to the user, sort_key the ranking criterion value, tie_code the entity code
+  (NULL if none). Return ALL valid candidates; ordering and top-k truncation are applied afterwards,
+  so do not LIMIT. The criterion is the one in the question, else the rulebook default.
+- list with list_order "question_order": the elements are listed in the order the question names them.
+  Columns ord (1-based position in the question) and item. Never sort by value.
+- table: first column the entity name, then one column per requested measure in question order.
+
+RULEBOOK:
+{rulebook}
+
+README:
+{readme}
+
+DATA SCHEMA:
+{schema_card}"""
+
+SOLVE_USER_V2 = """as_of_date (today): {as_of_date}
+QUESTION: {question}
+QUESTION FRAME: {frame_json}
+RESOLVED WINDOWS (inclusive):
+{windows}{examples}"""
+
+REPAIR_USER_V2 = """The previous answer failed: {error_code}
+{error_text}
+Fix the statement; keep the rules above (one SELECT, exact values, no invented columns).
+Use only tables and columns of the DATA SCHEMA. Return corrected JSON with the same schema."""
+
+SOLVE_TEMPLATE_V1, SOLVE_TEMPLATE_V2 = "solve.sql.v1", "solve.sql.v2"
+
 TEMPLATES: dict[str, tuple[str, ...]] = {
     RULES_TEMPORAL_ID: (RULES_TEMPORAL_SYSTEM_V1, RULES_TEMPORAL_USER_V1),
     "parse.frame.v3": (PARSE_SYSTEM_V3, PARSE_USER_V3),
     "solve.sql.v1": (SOLVE_SYSTEM_V1, SOLVE_USER_V1),
     "repair.sql.v1": (REPAIR_USER_V1,),
+    "solve.sql.v2": (SOLVE_SYSTEM_V2, SOLVE_USER_V2),
+    "repair.sql.v2": (REPAIR_USER_V2,),
 }
 
 
@@ -149,26 +200,33 @@ def _windows_text(windows: list[TimeWindow]) -> str:
     )
 
 
-def render_solve_system(split: SplitContext, cat: BusinessCatalog) -> str:
+def render_solve_system(split: SplitContext, cat: BusinessCatalog,
+                        template_id: str = SOLVE_TEMPLATE_V1) -> str:
     """The business-level solve system prompt (sections 1-5 of SPEC §7.7.1)."""
-    return SOLVE_SYSTEM_V1.format(rulebook=split.rulebook_text, readme=cat.readme_text or "(none)",
-                                  schema_card=cat.schema_card)
+    system = SOLVE_SYSTEM_V2 if template_id == SOLVE_TEMPLATE_V2 else SOLVE_SYSTEM_V1
+    return system.format(rulebook=split.rulebook_text, readme=cat.readme_text or "(none)",
+                         schema_card=cat.schema_card)
 
 
 def render_solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow],
-                 split: SplitContext, cat: BusinessCatalog) -> list[dict[str, str]]:
+                 split: SplitContext, cat: BusinessCatalog, template_id: str = SOLVE_TEMPLATE_V1,
+                 examples: list[str] | None = None) -> list[dict[str, str]]:
+    user = SOLVE_USER_V2 if template_id == SOLVE_TEMPLATE_V2 else SOLVE_USER_V1
+    extra = {"examples": "" if not examples else "\nSIMILAR SOLVED EXAMPLES:\n" + "\n".join(examples)}
     return [
-        {"role": "system", "content": render_solve_system(split, cat)},
-        {"role": "user", "content": SOLVE_USER_V1.format(
+        {"role": "system", "content": render_solve_system(split, cat, template_id)},
+        {"role": "user", "content": user.format(
             as_of_date=q.as_of_date.isoformat(), question=q.question,
-            frame_json=frame.model_dump_json(), windows=_windows_text(windows))},
+            frame_json=frame.model_dump_json(), windows=_windows_text(windows),
+            **(extra if template_id == SOLVE_TEMPLATE_V2 else {}))},
     ]
 
 
 def render_repair(messages: list[dict[str, str]], previous_content: str, error_code: str,
-                  error_text: str | None) -> list[dict[str, str]]:
+                  error_text: str | None, template_id: str = "repair.sql.v1") -> list[dict[str, str]]:
+    user = REPAIR_USER_V2 if template_id == "repair.sql.v2" else REPAIR_USER_V1
     return messages + [
         {"role": "assistant", "content": previous_content},
-        {"role": "user", "content": REPAIR_USER_V1.format(
+        {"role": "user", "content": user.format(
             error_code=error_code, error_text=error_text or "")},
     ]
