@@ -53,7 +53,7 @@ The script (build host with Docker and network; **not** the offline run) pulls t
 
 ```bash
 tools/gen_requirements_lock.sh
-python3 -m venv /tmp/lockcheck && /tmp/lockcheck/bin/pip install -r requirements.lock.base -r requirements.lock --no-deps  # heavy: GPU wheels; prefer running pytest inside the image instead
+# acceptance: CPU tests pass inside the image with the project installed on top of it
 docker run --rm --entrypoint "" -v "$PWD":/src:ro vllm/vllm-openai:v0.10.1.1 bash -c 'cp -r /src /tmp/w && cd /tmp/w && pip install -e . --no-deps -r requirements.in && pip install pytest && python -m pytest'
 ```
 

@@ -40,3 +40,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 - `runtime/promptstore.py` (prompt blobs, compacted `transport.request_body`), `runtime/environment.py` (environment fingerprint, model record), `LogRecord.degrade` (contracts **1.7.0**), `model.revision`, run.json and businesses.jsonl fields (SPEC §18.8).
 - Commands: `.venv/bin/ruff check src tests tools` → clean; `.venv/bin/python -m pytest -o addopts="" -q` → `404 passed`. The end-to-end record test runs the real `HttpModelClient` against the fake vLLM server through managed serving.
 - Needs: a real-model run to confirm `thinking` with thinking on/off (M4-19), and `nvidia-smi` fields on a GPU host.
+
+### M4-01 base image and lock — branch `m4/M4-01-base-image` (from `main`; also cherry-picked below this entry's later branches so the Dockerfile has `requirements.in`)
+- Added `docs/decisions/M4-01-base-image.md` (reference image facts from DG, candidate-serving table with evidence labels, what is unverified), `requirements.in`, `tools/gen_requirements_lock.sh` (`bash -n` → syntax ok; **not executed**: needs `docker pull` of an image that is not cached; `/` has ~17 GB free).
+- `requirements.lock` intentionally absent. Needs: build host with Docker + network runs the script, commits the three outputs, then runs CPU tests inside the image.
+- TASKS M4-01 → `Partial`.
