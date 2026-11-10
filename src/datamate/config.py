@@ -31,6 +31,7 @@ class ModelConfig(_Section):
     replay_path: str | None = None  # replay backend only (dev/CI): recorded calls JSONL
     record_path: str | None = None  # dev only: also record every call to this JSONL file
     path: str | None = None  # local model directory (production)
+    revision: str | None = None  # fixed model revision (commit hash); recorded in run.json
     base_url: str | None = None  # e.g. http://127.0.0.1:8000/v1; required for http
     served_model_name: str = Field(default="datamate", min_length=1)
     model_call_timeout_s: float = Field(default=120.0, gt=0, allow_inf_nan=False)
