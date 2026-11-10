@@ -35,3 +35,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 - L-20 test `tests/determinism/test_replayed_pipeline.py`: two fresh subprocesses → identical `submission.jsonl` bytes and identical `questions.jsonl` after removing `elapsed_ms`/`latency_ms`/`duration_ms`; replayed run scores 13/13; a changed seed (stands in for a template edit) → all abstain `E_REPLAY_MISS`.
 - Commands: `.venv/bin/ruff check src tests` → clean; `.venv/bin/python -m pytest -o addopts="" -q` → `401 passed`.
 - Needs (Colab): run `tools/record_model_calls.py` against Qwen on a training subset, commit the file; the tool itself has not been run against a live server.
+
+### M4-07 / M4-19 records — branch `m4/M4-07-records` (stacked on `m3/M3-13-replay-client`)
+- `runtime/promptstore.py` (prompt blobs, compacted `transport.request_body`), `runtime/environment.py` (environment fingerprint, model record), `LogRecord.degrade` (contracts **1.7.0**), `model.revision`, run.json and businesses.jsonl fields (SPEC §18.8).
+- Commands: `.venv/bin/ruff check src tests tools` → clean; `.venv/bin/python -m pytest -o addopts="" -q` → `404 passed`. The end-to-end record test runs the real `HttpModelClient` against the fake vLLM server through managed serving.
+- Needs: a real-model run to confirm `thinking` with thinking on/off (M4-19), and `nvidia-smi` fields on a GPU host.

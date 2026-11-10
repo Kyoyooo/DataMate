@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.6.0"  # additive: E_REPLAY_MISS (M3-13) on top of 1.5.0 runtime codes
+CONTRACTS_VERSION = "1.7.0"  # additive: LogRecord.degrade (M4-07) on top of 1.6.0
 
 
 class Contract(BaseModel):
@@ -494,3 +494,4 @@ class LogRecord(Contract):
     attempts: list[dict[str, Any]] = []
     windows: list[TimeWindow] = []
     decision: dict[str, Any] = {}
+    degrade: bool = False  # degrade mode was active when this question ran (SPEC §7.12-7)

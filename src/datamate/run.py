@@ -46,7 +46,9 @@ from datamate.llm import ModelClient, ProductionGuardError, make_client
 from datamate.prompts import template_sha256
 from datamate.rules import load_split
 from datamate.runtime import Orchestrator, ResultWriter
+from datamate.runtime.environment import fingerprint, model_record
 from datamate.runtime.orchestrator import ReplicaSupervisor
+from datamate.runtime.promptstore import PromptBlobStore
 
 
 def load_questions(path: Path) -> tuple[list[Question], list[tuple[str, str, str]], dict[str, int]]:
@@ -118,15 +120,18 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
             writer.write(*_abstain_log(qid, biz, reason))
             outcome["abstain"] += 1
             reasons[reason] += 1
+        blobs = PromptBlobStore(result_dir / "logs" / "prompt_blobs.jsonl")
+        split_calls = [blobs.compact(c).model_dump(mode="json") for c in split.rule_profile_calls]
         orch = Orchestrator(cfg=cfg, split=split, questions=questions, clients=clients,
                             writer=writer, setup=setup, supervisor=supervisor, t0=t0,
-                            progress_log=result_dir / "logs" / "progress.log")
+                            progress_log=result_dir / "logs" / "progress.log", blobs=blobs)
         previous = _install_sigterm(orch.request_stop)
         try:
             stats = orch.run()
         finally:
             _restore_sigterm(previous)
         # Canonical order: rows rejected at input first (file order), then questions by line.
+        blobs.finalize()
         writer.finalize_canonical([r[0] for r in invalid]
                                   + [q.id for q in sorted(questions, key=lambda q: q.line_no)])
         distinct = len(questions) + len(invalid)
@@ -140,6 +145,7 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
             cat = stats.catalogs.get(business_id)
             row: dict[str, Any] = {"business_id": business_id}
             row.update(cat.model_dump(mode="json") if cat else {"status": "missing_or_failed"})
+            row["setup_ms"] = stats.setup_ms.get(business_id)
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     run_record = {
@@ -153,11 +159,14 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         "split": {"rulebook_sha256": split.rulebook_sha256,
                   "temporal_params": split.temporal.model_dump(mode="json"),
                   "temporal_diagnostics": split.temporal_diagnostics,
-                  "calls": [call.model_dump(mode="json") for call in split.rule_profile_calls],
+                  "calls": split_calls,
                   "calendar_ok": split.calendar_ok,
                   "calendar_diagnostic": (split.calendar_diagnostic.model_dump(mode="json")
                                           if split.calendar_diagnostic else None),
                   "warnings": split.warnings},
+        "model": model_record(cfg.model.path, cfg.model.served_model_name, cfg.model.backend,
+                              cfg.model.revision),
+        "environment": fingerprint(),
         "replica_assignment": dict(sorted(stats.assignment.items())),
         "replicas": serving_record() if serving_record else None,
         "orchestrator": {"stop_reason": stats.stop_reason,
@@ -167,7 +176,11 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         "counts": {"questions": distinct, "written": distinct if complete else None,
                    **counts, "by_outcome": dict(outcome), "by_reason": dict(sorted(reasons.items()))},
         "errors": stats.errors,
-        "timings": {"first_answer_ms": stats.first_answer_ms},
+        "timings": {"replica_load_ms": (serving_record() or {}).get("replica_load_ms")
+                    if serving_record else None,
+                    "first_answer_ms": stats.first_answer_ms,
+                    "total_ms": int((time.monotonic() - t0) * 1000)},
+        "degrade_activated_ms": stats.degrade_activated_ms,
         "total_ms": int((time.monotonic() - t0) * 1000),
     }
     (result_dir / "logs" / "run.json").write_text(
