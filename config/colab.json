@@ -1,0 +1,23 @@
+{
+  "work_dir": "/content/work/datamate",
+  "model": {
+    "backend": "http",
+    "path": "/content/models/UNSELECTED",
+    "served_model_name": "datamate",
+    "revision": null
+  },
+  "serving": {
+    "mode": "managed",
+    "replicas": 1,
+    "base_port": 8100,
+    "dtype": "bfloat16",
+    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.33,
+    "max_num_seqs": 64,
+    "enable_prefix_caching": true,
+    "startup_timeout_s": 1800
+  },
+  "concurrency": {"questions_per_replica": 24, "setup_workers": 4},
+  "exec_limits": {"workers": 8},
+  "solver": {"tokenizer": "model"}
+}

@@ -115,3 +115,8 @@ The original `m3/M3-02-http-client` and `m1/M1-14-implementation-handoff` were n
 - `notebooks/BAKEOFF_G4.ipynb` (generated, no outputs; refuses to run without a 40-hex commit that is an ancestor of `origin/main`, a training split with `answers.jsonl`, and 40-hex model revisions), `tools/bakeoff.py`, `tools/make_bakeoff_notebook.py`, `docs/runbooks/bakeoff.md`, `model.structured_outputs`.
 - Tests: `tests/unit/test_bakeoff.py` (8). `.venv/bin/pytest -o addopts="" -q` → `476 passed, 2 skipped`; ruff clean.
 - **Not run on any GPU.** The notebook cells were only syntax-checked (`ast.parse`); vLLM behaviours (`VLLM_BATCH_INVARIANT` support in the installed version, FP8 on sm_120, `--no-enable-prefix-caching` spelling) are unobserved. DEC-3 is the lead's.
+
+### M4-02 Colab bootstrap — branch `m4/M4-02-colab-bootstrap` (from `main`)
+- `notebooks/colab_bootstrap.ipynb` (generated, no outputs): pinned commit on `main`, Drive snapshots verified with `SHA256SUMS`, project layer install, fixture run must score 13/13, tokenizer/param checks, 30-question **training** subset through the production pipeline with the real model (`--dev --set` overrides only for paths, revision and the 32 GB memory cap), scoring, `tools/precheck.sh`, outputs copied to Drive, lap times against the 20-minute target. `config/colab.json`, `tools/colab_helpers.py`.
+- Tests: `tests/unit/test_colab_bootstrap.py` (5). The notebook cells were only syntax-checked; `google.colab` and the GPU steps have never executed. Install does not use `requirements.lock` (it is built for the reference image, Colab's differs); vLLM/torch versions are recorded in `run.json.environment`.
+
