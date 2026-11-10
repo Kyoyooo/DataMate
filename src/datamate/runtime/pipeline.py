@@ -77,7 +77,8 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
                     blobs: PromptBlobStore | None = None,
                     context: ContextBuilder | None = None,
                     executor: SqlExecutor | None = None,
-                    fewshot_bank: FewshotBank | None = None) -> tuple[SubmissionRecord, LogRecord]:
+                    fewshot_bank: FewshotBank | None = None,
+                    python_executor: SqlExecutor | None = None) -> tuple[SubmissionRecord, LogRecord]:
     started = time.monotonic()
     calls: list[ModelCall] = []
     attempts: list[SolverAttempt] = []
@@ -111,7 +112,7 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
             if examples:
                 context_log = {**(context_log or {}), "fewshot": len(examples)}
             attempts = solve(q, frame, windows, prompt_cat, split, client, cfg, deadline, executor,
-                             examples)
+                             examples, python_executor)
             calls.extend(a.model_call for a in attempts)
         decision = decide(frame, windows, attempts, cat, cfg, pipeline_error)
         if deadline.hard_expired and decision.kind != "answer":

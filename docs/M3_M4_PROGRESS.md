@@ -72,3 +72,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 - `prompts/templates.py` (v2, v1 untouched and hash-pinned), `solver/fewshot.py`, `training_code/data_generation/build_fewshot.py`, `ContextBuilder.fit_fewshot`, pipeline/orchestrator/run wiring, `solver.template_version|fewshot_bank_path|fewshot_exclude_businesses`, SPEC §18.11. Default behaviour unchanged (v1, no bank).
 - Tests: `tests/unit/test_prompts_fewshot.py` (8). Full suite passes.
 - **No accuracy claim**: v2 and few-shot were never run against a model. Needs Colab: run the training split with v1 and v2, compare held-out PA by business fold (M3-09 gate), then build the bank from the better run.
+
+### M3-11 python fallback — branch `m3/M3-11-python-fallback` (stacked on `m3/M3-04-prompts-fewshot`)
+- `sandbox/python_exec.py`, `SandboxPool.run_python`, `solve.python.v1`, solver fallback stage, `solver.python_fallback` **default off**, contracts **1.10.0**, SPEC §18.12. M3-12 (P3 multi-strategy agreement) is not started, as instructed.
+- Tests: `tests/unit/test_python_fallback.py` — 16 passed, 1 skipped (pandas DataFrame case: pandas is not installed locally). Full suite passes.
+- No GPU evidence of any gain; leave off until L-07.

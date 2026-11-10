@@ -158,6 +158,26 @@ Use only tables and columns of the DATA SCHEMA. Return corrected JSON with the s
 
 SOLVE_TEMPLATE_V1, SOLVE_TEMPLATE_V2 = "solve.sql.v1", "solve.sql.v2"
 
+SOLVE_PYTHON_SYSTEM_V1 = """You solve a Vietnamese business question with a short Python function when SQL alone failed.
+Return JSON: {{"python": "...", "notes": "..."}}. The code must define `def solve(con):` where `con` is a
+read-only DuckDB connection (use con.execute("SELECT ...").fetchall() or .df()). Return the answer:
+- number, percent, string, boolean, date: one scalar (int, Decimal, str, bool, datetime.date).
+- ranked list: a list of dicts with keys item, sort_key, tie_code (all valid candidates, unsorted is fine).
+- question_order list: a list of dicts with keys ord (1-based) and item.
+- table: a list of dicts or a pandas DataFrame; first column the entity name.
+Rules: allowed imports are math, statistics, datetime, decimal, fractions, collections, itertools,
+functools, operator, re, json, pandas, numpy. No file, network or process access. Do not round; use the
+resolved date windows as literal inclusive dates; missing is not zero (return None when no data).
+
+RULEBOOK:
+{rulebook}
+
+README:
+{readme}
+
+DATA SCHEMA:
+{schema_card}"""
+
 TEMPLATES: dict[str, tuple[str, ...]] = {
     RULES_TEMPORAL_ID: (RULES_TEMPORAL_SYSTEM_V1, RULES_TEMPORAL_USER_V1),
     "parse.frame.v3": (PARSE_SYSTEM_V3, PARSE_USER_V3),
@@ -165,6 +185,7 @@ TEMPLATES: dict[str, tuple[str, ...]] = {
     "repair.sql.v1": (REPAIR_USER_V1,),
     "solve.sql.v2": (SOLVE_SYSTEM_V2, SOLVE_USER_V2),
     "repair.sql.v2": (REPAIR_USER_V2,),
+    "solve.python.v1": (SOLVE_PYTHON_SYSTEM_V1, SOLVE_USER_V2),
 }
 
 
@@ -203,7 +224,8 @@ def _windows_text(windows: list[TimeWindow]) -> str:
 def render_solve_system(split: SplitContext, cat: BusinessCatalog,
                         template_id: str = SOLVE_TEMPLATE_V1) -> str:
     """The business-level solve system prompt (sections 1-5 of SPEC §7.7.1)."""
-    system = SOLVE_SYSTEM_V2 if template_id == SOLVE_TEMPLATE_V2 else SOLVE_SYSTEM_V1
+    system = {SOLVE_TEMPLATE_V2: SOLVE_SYSTEM_V2,
+              "solve.python.v1": SOLVE_PYTHON_SYSTEM_V1}.get(template_id, SOLVE_SYSTEM_V1)
     return system.format(rulebook=split.rulebook_text, readme=cat.readme_text or "(none)",
                          schema_card=cat.schema_card)
 
@@ -211,14 +233,15 @@ def render_solve_system(split: SplitContext, cat: BusinessCatalog,
 def render_solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow],
                  split: SplitContext, cat: BusinessCatalog, template_id: str = SOLVE_TEMPLATE_V1,
                  examples: list[str] | None = None) -> list[dict[str, str]]:
-    user = SOLVE_USER_V2 if template_id == SOLVE_TEMPLATE_V2 else SOLVE_USER_V1
+    v2_user = template_id in (SOLVE_TEMPLATE_V2, "solve.python.v1")
+    user = SOLVE_USER_V2 if v2_user else SOLVE_USER_V1
     extra = {"examples": "" if not examples else "\nSIMILAR SOLVED EXAMPLES:\n" + "\n".join(examples)}
     return [
         {"role": "system", "content": render_solve_system(split, cat, template_id)},
         {"role": "user", "content": user.format(
             as_of_date=q.as_of_date.isoformat(), question=q.question,
             frame_json=frame.model_dump_json(), windows=_windows_text(windows),
-            **(extra if template_id == SOLVE_TEMPLATE_V2 else {}))},
+            **(extra if v2_user else {}))},
     ]
 
 
