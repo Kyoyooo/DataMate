@@ -51,6 +51,8 @@ from datamate.runtime import Orchestrator, ResultWriter
 from datamate.runtime.environment import fingerprint, model_record
 from datamate.runtime.orchestrator import ReplicaSupervisor
 from datamate.runtime.promptstore import PromptBlobStore
+from datamate.sandbox import SandboxPool
+from datamate.solver.solve import SqlExecutor
 
 
 def load_questions(path: Path) -> tuple[list[Question], list[tuple[str, str, str]], dict[str, int]]:
@@ -96,6 +98,7 @@ def _abstain_log(qid: str, business_id: str, reason: str) -> tuple[SubmissionRec
 def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: Path,
         result_dir: Path, *, dev: bool, overrides: list[str], extract_temporal: bool = False,
         supervisor: ReplicaSupervisor | None = None, context: ContextBuilder | None = None,
+        executor: SqlExecutor | None = None,
         serving_record: Callable[[], dict[str, Any]] | None = None) -> int:
     """Run the whole split. ``client`` is one client per replica (a single client = one replica).
 
@@ -127,7 +130,7 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         orch = Orchestrator(cfg=cfg, split=split, questions=questions, clients=clients,
                             writer=writer, setup=setup, supervisor=supervisor, t0=t0,
                             progress_log=result_dir / "logs" / "progress.log", blobs=blobs,
-                            context=context)
+                            context=context, executor=executor)
         previous = _install_sigterm(orch.request_stop)
         try:
             stats = orch.run()
@@ -245,25 +248,32 @@ def main(argv: list[str] | None = None) -> int:
     except (ProductionGuardError, NotImplementedError, ValidationError, ValueError, OSError) as exc:
         print(f"error: refusing to run: {exc}", file=sys.stderr)
         return 2
-    if not managed:
-        return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
-                   overrides=args.overrides, context=context)
-    from datamate.llm.replicas import ReplicaError, ReplicaManager
-
-    manager = ReplicaManager(cfg, args.result_dir / "logs")
+    pool = (SandboxPool(cfg.exec_limits.workers, cfg.exec_limits)
+            if cfg.exec_limits.isolation == "process" else None)
+    executor = pool.run_sql if pool else None
     try:
+        if not managed:
+            return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
+                       overrides=args.overrides, context=context, executor=executor)
+        from datamate.llm.replicas import ReplicaError, ReplicaManager
+
+        manager = ReplicaManager(cfg, args.result_dir / "logs")
         try:
-            manager.start()
-            clients = [make_client(c, dev=args.dev) for c in manager.client_configs()]
-        except ReplicaError as exc:
-            # Serving failed at run time: still deliver a complete (all-abstain) submission.
-            print(f"error: model servers unavailable: {exc}", file=sys.stderr)
-            clients = []
-        return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
-                   overrides=args.overrides, supervisor=manager if clients else None,
-                   serving_record=manager.record, context=context)
+            try:
+                manager.start()
+                clients = [make_client(c, dev=args.dev) for c in manager.client_configs()]
+            except ReplicaError as exc:
+                # Serving failed at run time: still deliver a complete (all-abstain) submission.
+                print(f"error: model servers unavailable: {exc}", file=sys.stderr)
+                clients = []
+            return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
+                       overrides=args.overrides, supervisor=manager if clients else None,
+                       serving_record=manager.record, context=context, executor=executor)
+        finally:
+            manager.stop()
     finally:
-        manager.stop()
+        if pool is not None:
+            pool.close()
 
 
 if __name__ == "__main__":

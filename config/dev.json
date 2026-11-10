@@ -6,5 +6,8 @@
   },
   "solver": {
     "tokenizer": "estimate"
+  },
+  "exec_limits": {
+    "workers": 2
   }
 }

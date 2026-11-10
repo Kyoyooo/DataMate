@@ -33,6 +33,7 @@ E_SQL_NOT_SELECT = "E_SQL_NOT_SELECT"
 E_SQL_NONDETERMINISTIC = "E_SQL_NONDETERMINISTIC"
 E_SQL_EXEC = "E_SQL_EXEC"
 E_SQL_TIMEOUT = "E_SQL_TIMEOUT"
+E_EXEC_CRASH = "E_EXEC_CRASH"  # sandbox worker died (killed, out of memory, crashed); replaced
 E_EMPTY_RESULT = "E_EMPTY_RESULT"  # no rows, or NULL: missing information, never zero
 E_TYPE_CONTRACT = "E_TYPE_CONTRACT"
 E_NO_SUCCESS = "E_NO_SUCCESS"
