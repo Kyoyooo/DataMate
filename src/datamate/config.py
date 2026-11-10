@@ -36,6 +36,9 @@ class ModelConfig(_Section):
     served_model_name: str = Field(default="datamate", min_length=1)
     model_call_timeout_s: float = Field(default=120.0, gt=0, allow_inf_nan=False)
     schema_adapter: Literal["timeref.v1", "none"] = "timeref.v1"
+    # False: send no response_format (determinism experiments, M3-08); invalid JSON is then handled
+    # by the callers' validation. Production keeps True.
+    structured_outputs: bool = True
     temperature: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     top_p: float = Field(default=1.0, gt=0, le=1)
     top_k: int = Field(default=-1, ge=-1)

@@ -1277,3 +1277,7 @@ New template ids `solve.sql.v2`, `repair.sql.v2` (v1 unchanged; its SHA-256 is p
 
 Additive contract changes (`CONTRACTS_VERSION = "1.10.0"`): `Stage` gains `fallback`; new `PythonSolverOutput {python, notes}`; `ExecutionResult.language` (`sql` default | `python`); `SolverAttempt.python_output` and `solver_output` now optional. `solver.python_fallback` (default **false**) enables one fallback attempt after the SQL attempts failed with an error that is about the code (never after `E_EMPTY_RESULT`, `D_IMPLAUSIBLE`, `E_SQL_TIMEOUT`, `E_EXEC_CRASH`, a model error, a soft deadline or degrade mode). Config adds `model.max_tokens.fallback` (3072) and `model.enable_thinking.fallback`. Execution follows §7.8 (allow-listed imports, fault boundary only) inside the killable pool. A list/table return value uses dict keys as columns (`item, sort_key, tie_code` / `ord, item` / entity + measures).
 
+### 18.13 M3-01/M3-08 bake-off tooling (no contract change)
+
+`model.structured_outputs` (default `true`) can be set to `false` to send no `response_format` (determinism experiments only). The bake-off is `notebooks/BAKEOFF_G4.ipynb` with helpers in `tools/bakeoff.py`; it supersedes the removed exploratory L4 notebook.
+
