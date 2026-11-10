@@ -1249,3 +1249,7 @@ CPU acceptance lives in `tests/unit/test_model_client.py`, using a real loopback
 - Records are appended in completion order while the run is live and re-ordered at finalization (`ResultWriter.finalize_canonical`: rows rejected at input first, then questions by input line), so `submission.jsonl` bytes do not depend on worker count or scheduling (D2, D13). `questions.jsonl` is re-ordered the same way.
 - `sandbox.execute.open_readonly` tolerates DuckDB's per-process shared instance already being config-locked (needed once questions run concurrently). Real isolation is M3-07.
 
+### 18.7 M3-13 replay (contracts 1.6.0)
+
+Registers `E_REPLAY_MISS` (additive; `CONTRACTS_VERSION = "1.6.0"`). `ReplayModelClient` is keyed by the SHA-256 of the canonical HTTP request body that `HttpModelClient` would send for the active `model.*` config (so prompt, schema, sampling, `max_tokens` and thinking switch are all part of the key), which refines §5.10's "request_sha256". Replayed `ModelCall`s carry `backend="replay"`; the recorded backend is in `transport.recorded_backend`. New config keys `model.replay_path`, `model.record_path` and backend `replay` are development-only. Format: `datamate.model_calls.v1` (see `llm/replay.py`).
+

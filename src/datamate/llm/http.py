@@ -30,6 +30,30 @@ def http_request_sha256(body: dict[str, Any]) -> str:
     return hashlib.sha256(_body_bytes(body)).hexdigest()
 
 
+def build_request_body(cfg: ModelConfig, *, stage: Stage, template_id: str,
+                       messages: list[dict[str, str]], json_schema: dict[str, Any] | None,
+                       max_tokens: int) -> dict[str, Any]:
+    """The exact HTTP body for one call. Pure: also used to key recorded calls (llm/replay.py)."""
+    if max_tokens <= 0:
+        raise ValueError("max_tokens must be positive")
+    body: dict[str, Any] = {
+        "model": cfg.served_model_name, "messages": copy.deepcopy(messages),
+        "temperature": cfg.temperature, "top_p": cfg.top_p,
+        "top_k": cfg.top_k, "min_p": cfg.min_p,
+        "presence_penalty": cfg.presence_penalty,
+        "frequency_penalty": cfg.frequency_penalty,
+        "repetition_penalty": cfg.repetition_penalty,
+        "max_tokens": max_tokens, "seed": cfg.seed, "n": 1, "stream": False,
+        "chat_template_kwargs": {"enable_thinking": cfg.enable_thinking.get(stage, False)},
+    }
+    if json_schema is not None:
+        schema = (schema_for_vllm(json_schema) if cfg.schema_adapter == "timeref.v1"
+                  else copy.deepcopy(json_schema))
+        body["response_format"] = {"type": "json_schema", "json_schema": {
+            "name": template_id.replace(".", "_"), "schema": schema, "strict": True}}
+    return body
+
+
 class HttpModelClient:
     backend = "http"
     dev_only = False
@@ -42,24 +66,8 @@ class HttpModelClient:
 
     def build_request(self, *, stage: Stage, template_id: str, messages: list[dict[str, str]],
                       json_schema: dict[str, Any] | None, max_tokens: int) -> dict[str, Any]:
-        if max_tokens <= 0:
-            raise ValueError("max_tokens must be positive")
-        body: dict[str, Any] = {
-            "model": self.cfg.served_model_name, "messages": copy.deepcopy(messages),
-            "temperature": self.cfg.temperature, "top_p": self.cfg.top_p,
-            "top_k": self.cfg.top_k, "min_p": self.cfg.min_p,
-            "presence_penalty": self.cfg.presence_penalty,
-            "frequency_penalty": self.cfg.frequency_penalty,
-            "repetition_penalty": self.cfg.repetition_penalty,
-            "max_tokens": max_tokens, "seed": self.cfg.seed, "n": 1, "stream": False,
-            "chat_template_kwargs": {"enable_thinking": self.cfg.enable_thinking.get(stage, False)},
-        }
-        if json_schema is not None:
-            schema = (schema_for_vllm(json_schema) if self.cfg.schema_adapter == "timeref.v1"
-                      else copy.deepcopy(json_schema))
-            body["response_format"] = {"type": "json_schema", "json_schema": {
-                "name": template_id.replace(".", "_"), "schema": schema, "strict": True}}
-        return body
+        return build_request_body(self.cfg, stage=stage, template_id=template_id,
+                                  messages=messages, json_schema=json_schema, max_tokens=max_tokens)
 
     def _post(self, data: bytes, timeout: float) -> tuple[int, bytes]:
         # Direct HTTPConnection ignores proxy environment variables and never follows redirects.

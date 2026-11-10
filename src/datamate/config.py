@@ -26,8 +26,10 @@ class _Section(BaseModel):
 class ModelConfig(_Section):
     # "scripted" is development-only and is rejected outside --dev (run.py).
     # Serving is external to the client; M4 owns server launch and health checks.
-    backend: Literal["scripted", "http"] = "http"
+    backend: Literal["scripted", "http", "replay"] = "http"
     script_path: str | None = None  # scripted backend only
+    replay_path: str | None = None  # replay backend only (dev/CI): recorded calls JSONL
+    record_path: str | None = None  # dev only: also record every call to this JSONL file
     path: str | None = None  # local model directory (production)
     base_url: str | None = None  # e.g. http://127.0.0.1:8000/v1; required for http
     served_model_name: str = Field(default="datamate", min_length=1)
