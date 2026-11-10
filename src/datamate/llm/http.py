@@ -46,7 +46,7 @@ def build_request_body(cfg: ModelConfig, *, stage: Stage, template_id: str,
         "max_tokens": max_tokens, "seed": cfg.seed, "n": 1, "stream": False,
         "chat_template_kwargs": {"enable_thinking": cfg.enable_thinking.get(stage, False)},
     }
-    if json_schema is not None:
+    if json_schema is not None and cfg.structured_outputs:
         schema = (schema_for_vllm(json_schema) if cfg.schema_adapter == "timeref.v1"
                   else copy.deepcopy(json_schema))
         body["response_format"] = {"type": "json_schema", "json_schema": {

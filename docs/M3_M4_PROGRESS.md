@@ -77,3 +77,8 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 - `sandbox/python_exec.py`, `SandboxPool.run_python`, `solve.python.v1`, solver fallback stage, `solver.python_fallback` **default off**, contracts **1.10.0**, SPEC §18.12. M3-12 (P3 multi-strategy agreement) is not started, as instructed.
 - Tests: `tests/unit/test_python_fallback.py` — 16 passed, 1 skipped (pandas DataFrame case: pandas is not installed locally). Full suite passes.
 - No GPU evidence of any gain; leave off until L-07.
+
+### M3-01 / M3-08 bake-off notebook — branch `m3/M3-01-bakeoff-notebook` (stacked on `m3/M3-11-python-fallback`)
+- `notebooks/BAKEOFF_G4.ipynb` (generated, no outputs; refuses to run without a 40-hex commit that is an ancestor of `origin/main`, a training split with `answers.jsonl`, and 40-hex model revisions), `tools/bakeoff.py`, `tools/make_bakeoff_notebook.py`, `docs/runbooks/bakeoff.md`, `model.structured_outputs`.
+- Tests: `tests/unit/test_bakeoff.py` (8). `.venv/bin/pytest -o addopts="" -q` → `476 passed, 2 skipped`; ruff clean.
+- **Not run on any GPU.** The notebook cells were only syntax-checked (`ast.parse`); vLLM behaviours (`VLLM_BATCH_INVARIANT` support in the installed version, FP8 on sm_120, `--no-enable-prefix-caching` spelling) are unobserved. DEC-3 is the lead's.
