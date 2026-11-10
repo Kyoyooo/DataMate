@@ -53,4 +53,7 @@ def test_notebook_is_generated_clean_and_valid_python():
         ast.parse(src)
     joined = "\n".join(code)
     assert "config/colab.json" in joined and "PA" in joined or "datamate.eval.score" in joined
-    assert "from_pretrained" not in joined and "snapshot_download" not in joined  # no weight downloads
+    # everything needed in one run: vLLM, data from train.zip, an example model download, scoring
+    for needle in ("import vllm", "train.zip", "snapshot_download", "count_params", "PA", "HF_HUB_OFFLINE"):
+        assert needle in joined, needle
+    assert "MODEL_REPO" in joined.split("\n")[0] + "\n".join(code[:1])  # the model is one editable parameter
