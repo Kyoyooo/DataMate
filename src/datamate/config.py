@@ -97,6 +97,27 @@ class ServingConfig(_Section):
         return self
 
 
+class ConcurrencyConfig(_Section):
+    """SPEC §6.2. Fixed per run; never tuned at run time (determinism D2)."""
+
+    questions_per_replica: int = Field(default=24, ge=1)  # worker threads per replica
+    setup_workers: int = Field(default=8, ge=1)  # business setup (ingestion) threads
+
+
+class DeadlinesConfig(_Section):
+    question_soft_s: float = Field(default=120.0, gt=0, allow_inf_nan=False)  # no new repair after
+    question_hard_s: float = Field(default=300.0, gt=0, allow_inf_nan=False)  # abstain E_DEADLINE
+    global_hard_stop_s: float = Field(default=19800.0, gt=0, allow_inf_nan=False)  # 5 h 30
+    degrade_if_projected_finish_s: float = Field(default=14400.0, gt=0, allow_inf_nan=False)
+    progress_interval_s: float = Field(default=60.0, gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _order(self) -> DeadlinesConfig:
+        if self.question_soft_s > self.question_hard_s:
+            raise ValueError("deadlines.question_soft_s must not exceed question_hard_s")
+        return self
+
+
 class SolverConfig(_Section):
     max_repairs: int = Field(default=1, ge=0)
 
@@ -127,6 +148,8 @@ class RunConfig(_Section):
     work_dir: str = "/tmp/datamate"
     model: ModelConfig = ModelConfig()
     serving: ServingConfig = ServingConfig()
+    concurrency: ConcurrencyConfig = ConcurrencyConfig()
+    deadlines: DeadlinesConfig = DeadlinesConfig()
     solver: SolverConfig = SolverConfig()
     exec_limits: ExecLimits = ExecLimits()
     decision: DecisionConfig = DecisionConfig()

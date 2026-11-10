@@ -58,12 +58,12 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 
 | Package | Owner | Role | Bootstrap state |
 |---|---|---|---|
-| `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.4.0 (P1 freeze; additive M2 resolver, calendar and profile extensions; M3-02 optional transport evidence, SPEC §18.5) |
+| `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.5.0 (P1 freeze; additive M2 resolver, calendar and profile extensions; M3-02 optional transport evidence, SPEC §18.5; runtime reason codes, §18.6) |
 | `eval/` | Lead | Scorer (`python -m datamate.eval.score`); harness later | scorer |
 | `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | fixture CSV only (UTF-8, ISO dates, plain numbers) |
 | `rules/`, `temporal/`, `decision/`, `formatting/` | M2 | Rulebook, time windows, gate, wire values | calendar validation; generic CLI time params with an opt-in CPU-tested extraction boundary ([M2 handoff](docs/M2_RULEBOOK_CALENDAR.md)) |
 | `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | HTTP + dev scripted clients; in-process executor |
-| `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | sequential; no serving, no image |
+| `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | concurrent orchestrator, replica manager (CPU-tested); no image yet |
 
 Planned packages, created only when their task starts: `entities/` (M1-12, P2), `semantics/` (M1-13, P2), `llm/replay.py` (M3-13), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
 
@@ -92,6 +92,9 @@ One JSON file; unknown keys are errors; missing keys take defaults from `src/dat
 | `serving.enable_prefix_caching` / `reasoning_parser` / `quantization` / `extra_server_args` | true / null / null / [] | Further server flags |
 | `serving.startup_timeout_s` / `health_poll_interval_s` / `warmup_max_tokens` | 900 / 2 / 8 | `GET /health` polling, then one fixed warm-up request |
 | `serving.max_restarts` / `shutdown_timeout_s` / `env` | 1 / 30 / {} | Restart budget per replica; SIGTERM→SIGKILL grace; extra server environment |
+| `concurrency.questions_per_replica` / `setup_workers` | 24 / 8 | Worker threads per replica; business-setup threads |
+| `deadlines.question_soft_s` / `question_hard_s` | 120 / 300 | No new repair after soft; abstain `E_DEADLINE` at hard (model calls are capped to the remaining time) |
+| `deadlines.global_hard_stop_s` / `degrade_if_projected_finish_s` / `progress_interval_s` | 19800 / 14400 / 60 | Global stop (unwritten ids → `abstain` `E_GLOBAL_STOP`); degrade mode (no repairs) if the projected finish passes the threshold |
 | `solver.max_repairs` | 1 | Repair turns after a failed SQL attempt |
 | `exec_limits.sql_timeout_s` / `max_result_rows` / `memory_limit_mb` | 20 / 1000 / 4096 | Executor limits |
 | `decision.zero_coverage` | `unanswerable` | What to emit when a period has no data (rulebook §7) |
