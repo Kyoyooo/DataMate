@@ -2,7 +2,7 @@
 
 An offline agent that answers Vietnamese questions over business CSV/Excel/SQLite data, or reports `unanswerable` / `abstain`. Competition requirements: [`docs/COMPETITION_BRIEF.md`](docs/COMPETITION_BRIEF.md). Technical design: [`docs/SPEC.md`](docs/SPEC.md) (see §18 for what the current code implements and defers). Backlog: [`docs/TASKS.md`](docs/TASKS.md). Workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-> **Status (2026-11-07): bootstrap.** The pipeline runs end to end on CPU **only on a synthetic fixture with a scripted (development-only) model client**. There is no real model client, no Excel/SQLite ingestion, and no Docker image yet. Fixture results are plumbing checks, not competition accuracy.
+> **Status (2026-11-09): bootstrap plus M3-02 HTTP client.** The fixture pipeline has a scripted development path and a loopback HTTP client for an externally started vLLM server. Excel/SQLite ingestion, replica management and Docker are still pending. Fixture results are plumbing checks, not competition accuracy. A real Colab call remains an acceptance check in `notebooks/M3_02_HTTP_CLIENT_CHECK.ipynb`.
 
 ## Setup (CPU, no GPU, no model weights, no network at run time)
 
@@ -31,7 +31,7 @@ GPU/serving dependencies (vLLM, torch, transformers) are **not** installed here;
 
 Expected: exit code 0, 13 lines in `out/fixture/submission.jsonl`, `PA = 1.0000 (n=13 …)`. Logs: `out/fixture/logs/questions.jsonl` (one record per question with `id`, `answer`, `elapsed_ms`, `thinking`, `code`, `output`, model calls, windows, decision), `businesses.jsonl`, `run.json` (records `"dev_mode": true, "model_backend": "scripted"`).
 
-Without `--dev`, the scripted backend is refused, and the production config (`config/run_config.json`) exits with code 2 because `HttpModelClient` is not implemented yet — no submission file is written:
+Without `--dev`, the scripted backend is refused. The supplied production config (`config/run_config.json`) still exits with code 2 until `model.base_url` is explicitly configured; no submission file is written in that startup check:
 
 ```bash
 .venv/bin/python -m datamate.run --config config/run_config.json --data-dir tests/fixtures/split_mini --result-dir out/prod-check
@@ -58,14 +58,14 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 
 | Package | Owner | Role | Bootstrap state |
 |---|---|---|---|
-| `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.3.0 (P1 freeze and additive M2 resolver, calendar and profile extensions) |
+| `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.5.0 (P1 freeze; additive M2 resolver, calendar and profile extensions; M3-02 optional transport evidence, SPEC §18.5; runtime reason codes, §18.6) |
 | `eval/` | Lead | Scorer (`python -m datamate.eval.score`); harness later | scorer |
 | `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | fixture CSV only (UTF-8, ISO dates, plain numbers) |
 | `rules/`, `temporal/`, `decision/`, `formatting/` | M2 | Rulebook, time windows, gate, wire values | calendar validation; generic CLI time params with an opt-in CPU-tested extraction boundary ([M2 handoff](docs/M2_RULEBOOK_CALENDAR.md)) |
-| `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | `ScriptedModelClient` only; in-process executor |
-| `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | sequential; no serving, no image |
+| `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | HTTP + dev scripted clients; in-process executor |
+| `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | concurrent orchestrator, replica manager (CPU-tested); no image yet |
 
-Planned packages, created only when their task starts: `entities/` (M1-12, P2), `semantics/` (M1-13, P2), `llm/http.py` (M3-02), `llm/replay.py` (M3-13), `llm/replicas.py` (M4-03), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
+Planned packages, created only when their task starts: `entities/` (M1-12, P2), `semantics/` (M1-13, P2), `llm/replay.py` (M3-13), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
 
 ## Configuration
 
@@ -74,9 +74,27 @@ One JSON file; unknown keys are errors; missing keys take defaults from `src/dat
 | Key | Default | Meaning |
 |---|---|---|
 | `work_dir` | `/tmp/datamate` | Scratch for per-business DuckDB files (never under the data dir) |
-| `model.backend` | `http` | `scripted` (dev only) or `http` (TASKS M3-02, not implemented) |
+| `model.backend` | `http` | `scripted` (dev only) or synchronous loopback `http` |
+| `model.base_url` | `null` | Required for HTTP; e.g. `http://127.0.0.1:8000/v1`; loopback only, no credentials/proxies/redirects |
+| `model.served_model_name` | `datamate` | Must match vLLM's served model name |
+| `model.model_call_timeout_s` | 120 | Shared time budget across attempts; timeouts are not retried |
+| `model.schema_adapter` | `timeref.v1` | Transport-only TimeRef oneOf adapter; `none` sends the source schema unchanged |
+| `model.temperature`, `model.top_p`, `model.top_k`, `model.min_p` | 0, 1, -1, 0 | Explicit decoding parameters |
+| `model.presence_penalty`, `model.frequency_penalty`, `model.repetition_penalty` | 0, 0, 1 | Explicit penalties |
+| `model.enable_thinking` | parse/solve/repair false | Per-stage switch; M4 must configure the matching reasoning parser |
 | `model.script_path` | `null` | Scripted responses (JSONL) for the dev backend |
 | `model.max_tokens` | parse 1024, solve/repair 2048 | Per-stage limits |
+| `serving.mode` | `external` | `external`: use `model.base_url` (Colab, manual `vllm serve`); `managed`: `llm.replicas.ReplicaManager` starts the loopback servers from `model.path` |
+| `serving.replicas` / `tensor_parallel_size` / `gpu_ids` | 1 / 1 / `null` | One server per GPU (`CUDA_VISIBLE_DEVICES`); `gpu_ids` default `0 … replicas×tp−1` |
+| `serving.base_port` | 8100 | Replica `i` listens on `127.0.0.1:base_port+i` |
+| `serving.vllm_command` | `python3 -m vllm.entrypoints.openai.api_server` | Launch command (tests substitute a fake server) |
+| `serving.dtype` / `max_model_len` / `gpu_memory_utilization` / `max_num_seqs` | bfloat16 / 32768 / 0.90 / 64 | Server flags (SPEC §7.13.1); never tuned at run time |
+| `serving.enable_prefix_caching` / `reasoning_parser` / `quantization` / `extra_server_args` | true / null / null / [] | Further server flags |
+| `serving.startup_timeout_s` / `health_poll_interval_s` / `warmup_max_tokens` | 900 / 2 / 8 | `GET /health` polling, then one fixed warm-up request |
+| `serving.max_restarts` / `shutdown_timeout_s` / `env` | 1 / 30 / {} | Restart budget per replica; SIGTERM→SIGKILL grace; extra server environment |
+| `concurrency.questions_per_replica` / `setup_workers` | 24 / 8 | Worker threads per replica; business-setup threads |
+| `deadlines.question_soft_s` / `question_hard_s` | 120 / 300 | No new repair after soft; abstain `E_DEADLINE` at hard (model calls are capped to the remaining time) |
+| `deadlines.global_hard_stop_s` / `degrade_if_projected_finish_s` / `progress_interval_s` | 19800 / 14400 / 60 | Global stop (unwritten ids → `abstain` `E_GLOBAL_STOP`); degrade mode (no repairs) if the projected finish passes the threshold |
 | `solver.max_repairs` | 1 | Repair turns after a failed SQL attempt |
 | `exec_limits.sql_timeout_s` / `max_result_rows` / `memory_limit_mb` | 20 / 1000 / 4096 | Executor limits |
 | `decision.zero_coverage` | `unanswerable` | What to emit when a period has no data (rulebook §7) |
@@ -85,7 +103,7 @@ One JSON file; unknown keys are errors; missing keys take defaults from `src/dat
 ## Repository layout
 
 ```
-config/            dev.json (scripted fixture run), run_config.json (production, fails until M3-02)
+config/            dev.json (scripted fixture run), run_config.json (set the HTTP endpoint before use)
 docs/              competition brief, Docker guide, architecture, SPEC, plan, TASKS
 src/datamate/      the package (see map above)
 tests/unit/        component tests;  tests/integration/  fixture pipeline end to end
@@ -93,3 +111,11 @@ tests/fixtures/    split_mini (synthetic split), scripted/ (dev model responses)
 ```
 
 Competition data (`train/`, `public_test/`, archives) is git-ignored and never committed. Never train on, tune on, or collect answers from the public or private test (Brief §5.2).
+
+## HTTP client acceptance (M3-02)
+
+Start vLLM separately (M4); set `model.base_url` and `model.served_model_name` in a run config. Client construction does not start or health-check the server. `complete` uses the actual HTTP body for its SHA-256, preserves generated text, and retries transport failures once with identical bytes. HTTP/protocol errors and timeouts are not retried. Errors return as `ModelCall.error`; SQL/content validation stays in parser/solver. A `length` finish reason is preserved, not changed to `stop`.
+
+`ModelCall.transport` records request preparation, adapter version, original schema hash, actual request body, raw response body, status and attempts. Failed schema preparation sends no request (`request_prepared=false`, empty-body hash). The legacy scripted hash is unchanged; replay recordings must pin the HTTP body and adapter policy. Transport records contain runtime prompts/responses and may increase log size.
+
+Run `python -m pytest tests/unit/test_model_client.py` for CPU fake-server checks. The check notebook repeats them by criterion, runs regression/lint checks, and optionally calls a real local vLLM server; without that real call M3-02 is not fully accepted.

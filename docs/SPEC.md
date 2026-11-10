@@ -1168,7 +1168,7 @@ The bootstrap codebase (`src/datamate`, contracts `1.0.0`) implements a **P1 sub
 | §7.8 process isolation (killable pool, RLIMIT_AS) | In-process read-only DuckDB with external access disabled, locked config, timer interrupt. **Not process isolation.** | M3-07 |
 | §7.9 fuzzy catalog check | Token-containment check, permissive (in doubt → not unanswerable) | M2-07 |
 | §7.12 replicas, concurrency, deadlines, degrade mode, global stop, SIGTERM | Sequential, single process | M4-05 |
-| §7.13 `HttpModelClient`, replica manager | Not implemented; production config fails at startup with exit 2 | M3-02, M4-03 |
+| §7.13 `HttpModelClient`, replica manager | M3-02 HTTP client implemented (§18.5); replica manager pending. Production config requires an explicit loopback endpoint | M3-02 (real-call acceptance pending), M4-03 |
 | §7.14 harness, folds, run records, `compare_runs` | Scorer only (`datamate.eval.score`) | L-10, L-12 |
 | §2.1 `predict.sh`, Docker image | Not implemented | M4-09 |
 | §4.2, §14.7, §15 reviewer approvals, CODEOWNERS, daily merge window as a gate | **Dropped** for this team: the only enforced rule is pull-request-only merging to `main`; affected members are told about shared-interface changes | L-19 |
@@ -1223,3 +1223,41 @@ Comparison references can point forward or back. The resolver preserves input or
 | Solar/lunar calendar | `split_mini/calendar.csv` header and §7.1 | Split loader records the calendar path. V6 still requires real-file verification | `calendar_path` | Absent file yields `W_CALENDAR_MISSING` | `split_mini` and `temporal_alt` fixtures, `test_parameters_change_resolution` |
 
 The historical baseline self-test checks inclusive day arithmetic, month/quarter year selection, and shorter-month comparisons. Its previous-month clamp informed the proposal where §7.5 gives no formula. Its text heuristics and split-specific behavior were excluded. H6 CPU evidence includes the scripted parser-to-SQL comparison test and 11,000 generated temporal cases with seed `0x20261108`. Local Windows Python 3.14.0 verification passed 139 tests and Ruff. The fixture scored 13/13 (PA 1.0000) and its submission matched the bootstrap byte for byte. Model output on the expanded schema still needs M3 validation on the real client.
+
+### 18.5 M3-02 HTTP client and additive contract proposal (2026-11-09)
+
+**Change proposal / consumer notice.** Add optional `ModelCall.transport: dict[str, Any] | None = None` and register `E_MODEL_TIMEOUT` / `E_MODEL_TRANSPORT`; bump contracts to `1.4.0` (additive minor on top of `main`'s `1.3.0`; the original proposal said `1.2.0` because it was written before M2-05's `1.3.0`). `MODEL_COMPARISION_L4.ipynb` was removed from this change: it targeted contracts `1.3.0` and template `parse.frame.v3` as they existed on another branch, ran on an L4 (sm_89) and did not verify licenses or release dates, so it is not reproducible evidence; M3-01/M3-08 replaces it. The existing required fields and scripted request-hash convention remain unchanged. Producers affected: HTTP client; consumers affected: runtime logs, evaluation, future replay (M3-13), M4 serving/orchestration, and M1/M2 model callers. The source config gains defaulted HTTP/decoding keys documented in README. This implementation is prepared for review; it does not assert Lead/M4 approval or a real GPU acceptance run.
+
+`HttpModelClient` implements DC-5 synchronously using the standard library. It accepts only explicit loopback HTTP endpoints, bypasses proxies and does not follow redirects. Server startup/health/restarts remain M4's responsibility. Configuration without `model.base_url` fails before outputs are opened. A transport failure gets one identical retry within the remaining call budget; timeout, HTTP errors, and malformed response envelopes do not retry. All model/transport failures return a `ModelCall.error`. Model-generated invalid JSON/SQL and `finish_reason=length` remain unmodified for caller-side validation.
+
+The client hashes canonical JSON of the actual HTTP body after schema adaptation. `transport` captures that body, original schema SHA-256, adapter policy, raw response text, status, preparation flag and attempt history. A pre-send preparation failure records `request_prepared=false`, no `request_body`, and the SHA-256 of `{}`; it is not a record of a transmitted request and must not be replayed as one. `params` echoes sent model/decoding fields (messages and response schema are in the recorded request body). HTTP errors and protocol failures use `E_MODEL_ERROR`; diagnostic details are in `transport`.
+
+The versioned `timeref.v1` adapter copies the source schema, makes each time-expression branch's unique string `kind.const` required, and converts only `TimeRef.expr.oneOf` to `anyOf`. It rejects overlapping tags and other unsupported `oneOf` unions. Original Pydantic validation remains in parse/solver. `model.schema_adapter=none` is an explicit opt-out for a backend supporting the source schema, not an automatic unconstrained-generation fallback.
+
+CPU acceptance lives in `tests/unit/test_model_client.py`, using a real loopback fake server. It covers explicit fields, exact generated text/reasoning, canonical hashes, schema adaptation, retry/timeout, error envelopes, redirects/proxy isolation, concurrent callers and the fixture pipeline. `notebooks/M3_02_HTTP_CLIENT_CHECK.ipynb` reruns those checks by criterion and records an optional real vLLM call. Real GPU acceptance and M3-13 replay remain pending until observed evidence exists.
+
+**Observed local verification (2026-11-09).** With `PYTHONPATH=src`, `.venv/Scripts/python -m pytest -ra -p no:cacheprovider` completed with **214 passed, 2 skipped** (training-reference checks skipped because `train/answers.jsonl` is absent). `.venv/Scripts/python -m ruff check src tests --no-cache` reported **All checks passed**. The notebook's CPU test/report cells were executed locally after substituting the existing checkout/environment for Colab clone/install: all **37 focused M3-02 acceptance cases** passed, regression/lint checks ran, CSV/JSON/conclusion exports were verified, and the disabled live-model branch remained **NOT VERIFIED**. The notebook JSON and all code-cell syntax were validated. No vLLM/GPU call was executed in this verification.
+
+### 18.6 M4-05 orchestrator and contracts 1.5.0 (2026-11-11)
+
+**Contract change (additive, minor).** `contracts/codes.py` registers `E_DEADLINE`, `E_GLOBAL_STOP` (both already named in §10.2) and `E_REPLICA_DOWN` (no model replica available; the all-abstain submission written when servers cannot start or all replicas die). `CONTRACTS_VERSION = "1.5.0"`.
+
+**Non-contract interface changes.** `ModelClient.complete` gains an optional `timeout_s` (caps one call below `model.model_call_timeout_s`; used to enforce question deadlines). `llm.Deadline` / `DeadlineExceeded` / `NO_DEADLINE` are new public names; `parse_question`, `solve` and `answer_question` take an optional `deadline`. New config sections `serving`, `concurrency`, `deadlines` (README table). Deviations from §6.2/§7.12, all deliberate:
+- Serving keys live in a `serving` section, not under `model`.
+- Business setup runs in a **thread** pool (`concurrency.setup_workers`), not a spawn process pool; M1 may switch the executor if ingestion proves GIL-bound.
+- Hard deadlines are enforced cooperatively (each call is capped to the remaining question time; no thread is killed), so a worker is occupied at most until its capped call returns.
+- Records are appended in completion order while the run is live and re-ordered at finalization (`ResultWriter.finalize_canonical`: rows rejected at input first, then questions by input line), so `submission.jsonl` bytes do not depend on worker count or scheduling (D2, D13). `questions.jsonl` is re-ordered the same way.
+- `sandbox.execute.open_readonly` tolerates DuckDB's per-process shared instance already being config-locked (needed once questions run concurrently). Real isolation is M3-07.
+
+### 18.7 M3-13 replay (contracts 1.6.0)
+
+Registers `E_REPLAY_MISS` (additive; `CONTRACTS_VERSION = "1.6.0"`). `ReplayModelClient` is keyed by the SHA-256 of the canonical HTTP request body that `HttpModelClient` would send for the active `model.*` config (so prompt, schema, sampling, `max_tokens` and thinking switch are all part of the key), which refines §5.10's "request_sha256". Replayed `ModelCall`s carry `backend="replay"`; the recorded backend is in `transport.recorded_backend`. New config keys `model.replay_path`, `model.record_path` and backend `replay` are development-only. Format: `datamate.model_calls.v1` (see `llm/replay.py`).
+
+### 18.8 M4-07 records (contracts 1.7.0)
+
+`LogRecord.degrade: bool = False` is added (additive, `CONTRACTS_VERSION = "1.7.0"`); `inputs` and `views_used` stay absent until helper calls / P2 views exist. `model.revision` is a new config key (recorded in run.json).
+
+**Bounded logs.** `ModelCall.transport.request_body` in `logs/questions.jsonl` is *compacted*: any message longer than 512 characters becomes `{"role", "content_sha256", "content_chars"}` and the response schema becomes `schema_sha256` (marker `transport.request_compacted = true`); the texts are written once to `logs/prompt_blobs.jsonl` (`{"sha256", "text"}`, sorted by hash). `request_sha256` still hashes the original body, so the request can be rebuilt from the blobs (tested). `content`, `reasoning`, `code`, `output` are never compacted. Without this a real business whose SchemaCard is ~370,000 characters would add that text to every call line.
+
+**run.json** now also carries `model` (path, served name, backend, revision, file sizes, hash of `SHA256SUMS` if shipped), `environment` (Python, platform, package versions read from metadata, GPUs from `nvidia-smi` or null, selected env vars, hash of `requirements.lock` and `BUILD_INFO.json` when present under `/code`), `timings` (`replica_load_ms`, `first_answer_ms`, `total_ms`), `degrade_activated_ms`, `replicas` (ports, GPUs, commands, restarts, events); `businesses.jsonl` rows carry `setup_ms`.
+
