@@ -1,0 +1,26 @@
+# Keep training_code/ and models/: the image must contain training evidence and weights (DG §9).
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+*.egg-info
+# competition data and archives: not part of the image (training evidence is under training_code/data)
+/train
+/public_test
+/private_test
+*.zip
+baseline_DataMate
+# run outputs and scratch
+/out
+/runs
+/result
+*.duckdb
+*.duckdb.wal
+# docs in other languages, notebooks and tests are not needed at run time
+*.vi.md
+notebooks
+tests
