@@ -41,10 +41,13 @@ REPAIR_TEMPLATE = "repair.sql.v1"
 def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: BusinessCatalog,
           split: SplitContext, client: ModelClient, cfg: RunConfig,
           deadline: Deadline = NO_DEADLINE,
-          executor: SqlExecutor | None = None) -> list[SolverAttempt]:
+          executor: SqlExecutor | None = None,
+          examples: list[str] | None = None) -> list[SolverAttempt]:
     attempts: list[SolverAttempt] = []
-    messages = render_solve(q, frame, windows, split, cat)
-    stage, template = "solve", SOLVE_TEMPLATE
+    v2 = cfg.solver.template_version == "v2"
+    solve_id, repair_id = ("solve.sql.v2", "repair.sql.v2") if v2 else (SOLVE_TEMPLATE, REPAIR_TEMPLATE)
+    messages = render_solve(q, frame, windows, split, cat, solve_id, examples)
+    stage, template = "solve", solve_id
     for attempt_no in range(1, cfg.solver.max_repairs + 2):
         if deadline.hard_expired:  # hard deadline / global stop: the pipeline abstains (E_DEADLINE)
             break
@@ -84,6 +87,6 @@ def solve(q: Question, frame: QuestionFrame, windows: list[TimeWindow], cat: Bus
             break
         if deadline.soft_expired or deadline.degrade:
             break  # soft deadline / degrade mode (SPEC §7.12): no new repair starts
-        messages = render_repair(messages, call.content, error_code, error_text)
-        stage, template = "repair", REPAIR_TEMPLATE
+        messages = render_repair(messages, call.content, error_code, error_text, repair_id)
+        stage, template = "repair", repair_id
     return attempts

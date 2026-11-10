@@ -32,7 +32,7 @@ from datamate.llm import NO_DEADLINE, Deadline, DeadlineExceeded, ModelClient
 from datamate.parse import parse_question
 from datamate.prompts.budget import ContextBuilder, ContextOverflow
 from datamate.runtime.promptstore import PromptBlobStore
-from datamate.solver import solve
+from datamate.solver import FewshotBank, solve
 from datamate.solver.solve import SqlExecutor
 from datamate.temporal import resolve_windows
 
@@ -58,13 +58,26 @@ def _thinking(calls: list[ModelCall]) -> list[str] | None:
     return [c.reasoning or "" for c in calls]
 
 
+def _examples(q: Question, frame: QuestionFrame, cfg: RunConfig, bank: FewshotBank | None,
+              context: ContextBuilder | None, plan: Any) -> list[str]:
+    """Few-shot blocks for template v2 only: selected from the training-built bank, minus the
+    cross-validation exclusions, then trimmed to the remaining token budget."""
+    if bank is None or cfg.solver.template_version != "v2" or cfg.solver.fewshot_k <= 0:
+        return []
+    picked = bank.select(q.question, frame.metric_text, frame.expected_type, cfg.solver.fewshot_k,
+                         frozenset(cfg.solver.fewshot_exclude_businesses))
+    blocks = [e.render() for e in picked]
+    return context.fit_fewshot(plan, blocks) if context is not None and plan is not None else blocks
+
+
 def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | None,
                     client: ModelClient, cfg: RunConfig,
                     pipeline_error: str | None = None,
                     deadline: Deadline = NO_DEADLINE,
                     blobs: PromptBlobStore | None = None,
                     context: ContextBuilder | None = None,
-                    executor: SqlExecutor | None = None) -> tuple[SubmissionRecord, LogRecord]:
+                    executor: SqlExecutor | None = None,
+                    fewshot_bank: FewshotBank | None = None) -> tuple[SubmissionRecord, LogRecord]:
     started = time.monotonic()
     calls: list[ModelCall] = []
     attempts: list[SolverAttempt] = []
@@ -73,6 +86,7 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
     error_detail: str | None = None
     context_log: dict[str, Any] | None = None
     prompt_cat = cat  # the catalog as shown to the model (budgeted README / SchemaCard)
+    plan = None
     try:
         if pipeline_error is None and (cat is None or cat.status != "ready"):
             pipeline_error = codes.E_BUSINESS_SETUP
@@ -93,7 +107,11 @@ def answer_question(q: Question, split: SplitContext, cat: BusinessCatalog | Non
             windows, pipeline_error = resolve_windows(frame.time, q.as_of_date, split.temporal,
                                                       cat.data_range)
         if pipeline_error is None and pre_solve_decision(frame, windows, cat, cfg) is None:
-            attempts = solve(q, frame, windows, prompt_cat, split, client, cfg, deadline, executor)
+            examples = _examples(q, frame, cfg, fewshot_bank, context, plan)
+            if examples:
+                context_log = {**(context_log or {}), "fewshot": len(examples)}
+            attempts = solve(q, frame, windows, prompt_cat, split, client, cfg, deadline, executor,
+                             examples)
             calls.extend(a.model_call for a in attempts)
         decision = decide(frame, windows, attempts, cat, cfg, pipeline_error)
         if deadline.hard_expired and decision.kind != "answer":
