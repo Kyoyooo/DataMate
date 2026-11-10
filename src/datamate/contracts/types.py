@@ -20,7 +20,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONTRACTS_VERSION = "1.7.0"  # additive: LogRecord.degrade (M4-07) on top of 1.6.0
+CONTRACTS_VERSION = "1.8.0"  # additive: E_CONTEXT_OVERFLOW (M3-03) on top of 1.7.0
 
 
 class Contract(BaseModel):

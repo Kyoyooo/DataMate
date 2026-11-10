@@ -43,7 +43,9 @@ from datamate.contracts import (
 )
 from datamate.lexicon import nfc
 from datamate.llm import ModelClient, ProductionGuardError, make_client
+from datamate.llm.tokenizer import CharEstimateTokenizer, load_tokenizer
 from datamate.prompts import template_sha256
+from datamate.prompts.budget import ContextBuilder
 from datamate.rules import load_split
 from datamate.runtime import Orchestrator, ResultWriter
 from datamate.runtime.environment import fingerprint, model_record
@@ -93,7 +95,7 @@ def _abstain_log(qid: str, business_id: str, reason: str) -> tuple[SubmissionRec
 
 def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: Path,
         result_dir: Path, *, dev: bool, overrides: list[str], extract_temporal: bool = False,
-        supervisor: ReplicaSupervisor | None = None,
+        supervisor: ReplicaSupervisor | None = None, context: ContextBuilder | None = None,
         serving_record: Callable[[], dict[str, Any]] | None = None) -> int:
     """Run the whole split. ``client`` is one client per replica (a single client = one replica).
 
@@ -124,7 +126,8 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         split_calls = [blobs.compact(c).model_dump(mode="json") for c in split.rule_profile_calls]
         orch = Orchestrator(cfg=cfg, split=split, questions=questions, clients=clients,
                             writer=writer, setup=setup, supervisor=supervisor, t0=t0,
-                            progress_log=result_dir / "logs" / "progress.log", blobs=blobs)
+                            progress_log=result_dir / "logs" / "progress.log", blobs=blobs,
+                            context=context)
         previous = _install_sigterm(orch.request_stop)
         try:
             stats = orch.run()
@@ -167,6 +170,8 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         "model": model_record(cfg.model.path, cfg.model.served_model_name, cfg.model.backend,
                               cfg.model.revision),
         "environment": fingerprint(),
+        "context_budget": ({"tokenizer": context.tok.name, **cfg.solver.model_dump(mode="json")}
+                           if context else None),
         "replica_assignment": dict(sorted(stats.assignment.items())),
         "replicas": serving_record() if serving_record else None,
         "orchestrator": {"stop_reason": stats.stop_reason,
@@ -186,6 +191,18 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
     (result_dir / "logs" / "run.json").write_text(
         json.dumps(run_record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return 0 if complete else 1
+
+
+def _context_builder(cfg: RunConfig) -> ContextBuilder:
+    """Token budgeting needs the shipped model's tokenizer; absent in production → exit 2."""
+    if cfg.solver.tokenizer == "estimate":
+        return ContextBuilder(CharEstimateTokenizer(), cfg.solver)
+    tok = load_tokenizer(cfg.model.path)
+    if tok is None:
+        raise ValueError(f"cannot load the tokenizer from model.path {cfg.model.path!r} "
+                         "(transformers and local tokenizer files are required; "
+                         "solver.tokenizer='estimate' is development-only)")
+    return ContextBuilder(tok, cfg.solver)
 
 
 def _install_sigterm(handler: Callable[[], None]) -> Any:
@@ -224,12 +241,13 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("serving.mode='managed' requires model.backend='http'")
         if not (args.data_dir / "questions.jsonl").is_file():
             raise FileNotFoundError(f"{args.data_dir / 'questions.jsonl'} not found")
+        context = _context_builder(cfg)
     except (ProductionGuardError, NotImplementedError, ValidationError, ValueError, OSError) as exc:
         print(f"error: refusing to run: {exc}", file=sys.stderr)
         return 2
     if not managed:
         return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
-                   overrides=args.overrides)
+                   overrides=args.overrides, context=context)
     from datamate.llm.replicas import ReplicaError, ReplicaManager
 
     manager = ReplicaManager(cfg, args.result_dir / "logs")
@@ -243,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
             clients = []
         return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
                    overrides=args.overrides, supervisor=manager if clients else None,
-                   serving_record=manager.record)
+                   serving_record=manager.record, context=context)
     finally:
         manager.stop()
 
