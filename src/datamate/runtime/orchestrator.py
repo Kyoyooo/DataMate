@@ -125,13 +125,15 @@ class Orchestrator:
                  clock: Callable[[], float] = time.monotonic, t0: float | None = None,
                  progress_log: Path | None = None, blobs: PromptBlobStore | None = None,
                  context: ContextBuilder | None = None, executor: SqlExecutor | None = None,
-                 fewshot_bank: FewshotBank | None = None):
+                 fewshot_bank: FewshotBank | None = None,
+                 python_executor: SqlExecutor | None = None):
         self.cfg, self.split, self.questions = cfg, split, list(questions)
         self.clients, self.writer, self._setup = clients, writer, setup
         self._supervisor, self._clock = supervisor, clock
         self._t0 = clock() if t0 is None else t0
         self._progress_log, self._blobs, self._context = progress_log, blobs, context
         self._executor, self._fewshot = executor, fewshot_bank
+        self._python_executor = python_executor
         n = len(clients)
         self._queues: list[queue.Queue[tuple[Question, BusinessCatalog | None, str | None]]] = [
             queue.Queue() for _ in range(n)]
@@ -213,7 +215,8 @@ class Orchestrator:
             record, log = answer_question(q, self.split, cat, self.clients[replica], self.cfg,
                                           pipeline_error=err, deadline=deadline, blobs=self._blobs,
                                           context=self._context, executor=self._executor,
-                                          fewshot_bank=self._fewshot)
+                                          fewshot_bank=self._fewshot,
+                                          python_executor=self._python_executor)
         except BaseException as exc:  # answer_question already guards Exception; be total
             record, log = _abstain(q, codes.E_INTERNAL, f"{type(exc).__name__}: {exc}")
         if not self.writer.try_write(record, log):

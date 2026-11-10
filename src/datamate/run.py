@@ -100,6 +100,7 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         result_dir: Path, *, dev: bool, overrides: list[str], extract_temporal: bool = False,
         supervisor: ReplicaSupervisor | None = None, context: ContextBuilder | None = None,
         executor: SqlExecutor | None = None, fewshot_bank: FewshotBank | None = None,
+        python_executor: SqlExecutor | None = None,
         serving_record: Callable[[], dict[str, Any]] | None = None) -> int:
     """Run the whole split. ``client`` is one client per replica (a single client = one replica).
 
@@ -131,7 +132,8 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         orch = Orchestrator(cfg=cfg, split=split, questions=questions, clients=clients,
                             writer=writer, setup=setup, supervisor=supervisor, t0=t0,
                             progress_log=result_dir / "logs" / "progress.log", blobs=blobs,
-                            context=context, executor=executor, fewshot_bank=fewshot_bank)
+                            context=context, executor=executor, fewshot_bank=fewshot_bank,
+                            python_executor=python_executor)
         previous = _install_sigterm(orch.request_stop)
         try:
             stats = orch.run()
@@ -254,11 +256,12 @@ def main(argv: list[str] | None = None) -> int:
     pool = (SandboxPool(cfg.exec_limits.workers, cfg.exec_limits)
             if cfg.exec_limits.isolation == "process" else None)
     executor = pool.run_sql if pool else None
+    py_executor = pool.run_python if pool else None
     try:
         if not managed:
             return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
                        overrides=args.overrides, context=context, executor=executor,
-                       fewshot_bank=bank)
+                       fewshot_bank=bank, python_executor=py_executor)
         from datamate.llm.replicas import ReplicaError, ReplicaManager
 
         manager = ReplicaManager(cfg, args.result_dir / "logs")
@@ -273,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
             return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
                        overrides=args.overrides, supervisor=manager if clients else None,
                        serving_record=manager.record, context=context, executor=executor,
-                       fewshot_bank=bank)
+                       fewshot_bank=bank, python_executor=py_executor)
         finally:
             manager.stop()
     finally:
