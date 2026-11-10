@@ -1,0 +1,6 @@
+# Project requirements installed ON TOP of the vLLM base image (SPEC §4.4).
+# vllm, torch, transformers, openai, pydantic (v2) come from the base image and
+# must not be re-pinned here: re-installing them would replace the Blackwell
+# builds shipped in the image. Keep this file in sync with pyproject.toml
+# `dependencies`; tools/gen_requirements_lock.sh checks the overlap.
+duckdb>=1.1,<2
