@@ -1,0 +1,1 @@
+# No third-party dependencies: data_generation/build_manifest.py uses only the Python standard library.

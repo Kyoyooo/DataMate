@@ -32,3 +32,6 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+# Staged training split copy (tools/build_image.sh); large, never committed
+/training_code/data/train/
