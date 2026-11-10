@@ -1,6 +1,39 @@
 # M3 / M4 progress log
 
-Owner of this log: whoever holds the M3/M4 backlog. Source of task status remains `docs/TASKS.md`. Entries record commands actually run and their actual output; "needs" lists what only a GPU, Colab, the E5 host or a human can do.
+Source of task status remains `docs/TASKS.md`. Every entry records commands actually run and their actual output; "needs" lists what only a GPU, Colab, the E5 host or a human can do. Contracts are at **1.10.0** on the tip branch (additive minors only, SPEC §18.5–§18.13).
+
+## Branch stack and merge order (nothing is pushed or opened as a PR)
+
+This environment has **no GitHub credentials and no `gh` CLI** (`git push` fails with "could not read Username"), so no branch has been pushed and no PR exists. Branches are local, each stacked on the previous one because the work depends on earlier config/contract changes; open one PR per branch with the previous branch as its base (or merge in this order). `m4/M4-09-docker` also contains the two M4-01 commits (cherry-picked so the Dockerfile has `requirements.in`): merge `m4/M4-01-base-image` first, then a rebase drops the duplicates.
+
+| # | Branch | Task(s) | Base |
+|---|---|---|---|
+| 1 | `m3/M3-02-http-client-rebased` | M3-02 (contracts 1.4.0) | `main` |
+| 2 | `m4/M4-01-base-image` | M4-01 | `main` |
+| 3 | `m4/M4-03-replica-manager` | M4-03 | 1 |
+| 4 | `m4/M4-05-orchestrator` | M4-05 (1.5.0) | 3 |
+| 5 | `m3/M3-13-replay-client` | M3-13, L-20 test (1.6.0) | 4 |
+| 6 | `m4/M4-07-records` | M4-07, M4-19 CPU part (1.7.0) | 5 |
+| 7 | `m4/M4-09-docker` | M4-09, M4-13 | 6 (+2) |
+| 8 | `m4/M4-14-precheck-runbooks` | M4-14, M4-12 | 7 |
+| 9 | `m3/M3-03-token-budget` | M3-03 (1.8.0) | 8 |
+| 10 | `m3/M3-07-sandbox-pool` | M3-07 (1.9.0) | 9 |
+| 11 | `m3/M3-04-prompts-fewshot` | M3-04/05/10 | 10 |
+| 12 | `m3/M3-11-python-fallback` | M3-11 (1.10.0) | 11 |
+| 13 | `m3/M3-01-bakeoff-notebook` | M3-01, M3-08 | 12 |
+
+The original `m3/M3-02-http-client` and `m1/M1-14-implementation-handoff` were not touched. Ownership notices: no M1/M2-owned code changed; `contracts/` (Lead) changed only additively; `sandbox/execute.py` is M3's. M1's `runtime/pipeline.py` rewrite will conflict with mine (see the M3-03 entry).
+
+## Discrepancies with the hand-over note
+- `main` is at contracts **1.3.0**, not 1.1.0, so the M3-02 additions became 1.4.0 (a bump to 1.2.0 would be a downgrade).
+- `config/run_config.json` serves a placeholder model (`/code/models/UNSELECTED`); the hand-over asked for "the real model path and base_url": DEC-3 is not decided, so the lead must set it.
+
+## Open questions for the lead
+1. DEC-3: model, revision and base image (reference `vllm/vllm-openai:v0.10.1.1` unless a candidate needs newer vLLM). `model.path`, `model.revision` and the serving values in `config/run_config.json` are placeholders until then.
+2. Package the full 186 MB training split under `training_code/data/train/` (what `tools/build_image.sh` does) or only derived data?
+3. Is the in-flight loss on replica crash acceptable (questions running on a replica at the moment it dies abstain; queued ones move to the other replica)? Re-queueing in-flight questions is possible but not built.
+4. `solver.template_version` stays `v1`, `python_fallback` false and no few-shot bank until a held-out run exists. Agree?
+5. How should M1's branch (new `answer_question` signature, `select_schema_context`) be sequenced against this stack?
 
 ## 2026-11-11
 
@@ -60,7 +93,7 @@ Owner of this log: whoever holds the M3/M4 backlog. Source of task status remain
 
 ### M3-03 token budgeting — branch `m3/M3-03-token-budget` (stacked on `m4/M4-14-precheck-runbooks`)
 - `llm/tokenizer.py`, `prompts/budget.py`, `solver.*` budget keys, `E_CONTEXT_OVERFLOW` (contracts **1.8.0**), pipeline + run.json integration, SPEC §18.9. Dev configs (`config/dev.json`, `config/replay.json`) use `solver.tokenizer=estimate`; production requires the real tokenizer (exit 2 otherwise).
-- `.venv/bin/pytest -o addopts="" -q` → all pass (426 incl. 1 skipped real-tokenizer test: no local model/tokenizer files); ruff clean.
+- `.venv/bin/pytest -o addopts="" -q` → `434 passed, 1 skipped` (the skipped test needs a local tokenizer under `models/`); ruff clean.
 - **Coordination with M1**: M1's `select_schema_context` (branch `m1/M1-14-implementation-handoff`) already does SchemaCard budgeting/relevant-subset with an HF-style tokenizer; it was not copied. After M1 merges and rebases on the new contracts, wire it as `ContextBuilder(schema_fn=…, schema_subset_fn=…)` in `run._context_builder`. M1's branch also replaces `runtime/pipeline.py`; expect a conflict there with M4-05/M4-07/M3-03 (all of mine touch `answer_question`) — M1 should rebase onto main after these merge.
 
 ### M3-07 sandbox worker pool — branch `m3/M3-07-sandbox-pool` (stacked on `m3/M3-03-token-budget`)
