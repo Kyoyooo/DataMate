@@ -96,7 +96,7 @@ def test_notebook_is_generated_pinned_and_free_of_outputs():
     joined = "\n".join(code)
     for needle in ('re.fullmatch(r"[0-9a-f]{40}", REPO_COMMIT)', "is-ancestor", "check_sums", "answers.jsonl",
                    "PA = 1.0000", "config/colab.json", "precheck.sh", "gpu_memory_fraction", "WITHIN BUDGET",
-                   "requirements.in", "load_tokenizer"):
+                   "requirements.in", "load_tokenizer", "CREATE_MISSING_SUMS = False", "has no SHA256SUMS"):
         assert needle in joined, needle
     assert "snapshot_download" not in joined and "from_pretrained" not in joined  # no weight downloads
     for src in code:

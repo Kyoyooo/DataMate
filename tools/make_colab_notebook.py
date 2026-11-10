@@ -31,7 +31,7 @@ DataMate/data/train/            questions.jsonl, answers.jsonl, rulebook.md, cal
 DataMate/models/<MODEL_NAME>/   weights, tokenizer, configs, SHA256SUMS
 DataMate/runs/                  outputs are copied here
 ```
-Create a missing `SHA256SUMS` once, on a trusted copy: `python tools/colab_helpers.py create <dir>`.
+Create a missing `SHA256SUMS` once: either on a trusted copy (`python tools/colab_helpers.py create <dir>`) or by setting `CREATE_MISSING_SUMS = True` for the first session (trust on first use; it protects later sessions).
 
 **Rules.** Training data only (the notebook refuses a split without `answers.jsonl`). No downloads of model weights here: the model must already be on Drive.
 Overrides are passed as `--dev --set key=value`, so they are recorded in `run.json`.
@@ -47,6 +47,9 @@ MODEL_REVISION = None                             # 40-hex commit of the model, 
 MEMORY_CAP_GIB = 32.0                             # emulate an RTX 5090
 PER_BUSINESS, MAX_QUESTIONS = 2, 30               # training subset
 TIME_BUDGET_MIN = 20
+# First session only: if a snapshot has no SHA256SUMS yet, create it from the copied files and store it on Drive
+# (trust on first use: it protects LATER sessions, not this one). Leave False once the sums exist.
+CREATE_MISSING_SUMS = False
 ''')
 
 add(CODE, '''
@@ -98,6 +101,11 @@ for src, dst in ((Path(DRIVE_ROOT) / "data" / "train", TRAIN), (Path(DRIVE_ROOT)
     assert src.is_dir(), f"missing on Drive: {src}"
     if not dst.exists():
         dst.parent.mkdir(parents=True, exist_ok=True); shutil.copytree(src, dst)
+    if not (dst / "SHA256SUMS").is_file():
+        assert CREATE_MISSING_SUMS, (f"{src} has no SHA256SUMS. Set CREATE_MISSING_SUMS = True for the first session "
+                                     f"(or run: python tools/colab_helpers.py create <dir> on a trusted copy), then set it back to False.")
+        n_files = colab_helpers.create_sums(dst); shutil.copy(dst / "SHA256SUMS", src / "SHA256SUMS")
+        print(f"created SHA256SUMS for {dst} ({n_files} files) and saved it to Drive: this session is NOT verified against an independent hash list")
     problems = colab_helpers.check_sums(dst)
     assert not problems, f"{dst}: snapshot does not match its SHA256SUMS: {problems[:5]}"
     print("verified", dst)

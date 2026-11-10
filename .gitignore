@@ -35,3 +35,6 @@ dist/
 
 # Staged training split copy (tools/build_image.sh); large, never committed
 /training_code/data/train/
+
+# Local copies of competition data (never commit)
+/data/
