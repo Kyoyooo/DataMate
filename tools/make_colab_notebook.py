@@ -17,8 +17,8 @@ def add(kind: str, text: str) -> None:
 add("markdown", """
 # Colab quick start (all in one)
 
-**Run all, once.** It sets up everything: GPU check, vLLM, the project code, the training data, the model (downloaded if you do not have it yet),
-a built-in fixture check, 30 training questions with your model, and the score. Results are saved to Google Drive.
+**Run all, once.** This notebook does only what needs the GPU: vLLM, the model (downloaded if you do not have it yet) and 30 training questions.
+Results are saved to Google Drive. Everything else (tests, the fixture check, scoring, parameter count, licence check) is done on your own computer without a GPU.
 
 Only one manual step: put **`train.zip`** (the training split you received, 128 MB) in `MyDrive/DataMate/` on Google Drive.
 The model is an **example** (`Qwen/Qwen3-8B`): change `MODEL_REPO` to try another. Which model is used for the competition is the team lead's decision;
@@ -71,15 +71,7 @@ print("commit:", sh("cd /content/DataMate && git rev-parse --short HEAD").strip(
 ''')
 
 add("code", '''
-# 4. Fixture check (no model needed). Must print PA = 1.0000
-FX = "/content/out/fixture"; shutil.rmtree(FX, ignore_errors=True)
-r = run(["datamate.run", "--dev", "--config", "config/dev.json", "--data-dir", "tests/fixtures/split_mini", "--result-dir", FX, "--set", "work_dir=/content/work/fixture"])
-assert r.returncode == 0, r.stderr[-800:]
-print(run(["datamate.eval.score", "--pred", f"{FX}/submission.jsonl", "--answers", "tests/fixtures/split_mini/answers.jsonl"]).stdout.splitlines()[0])
-''')
-
-add("code", '''
-# 5. Training data: from Drive (MyDrive/DataMate/data/train/ if you have it, otherwise unzipped from MyDrive/DataMate/train.zip)
+# 4. Training data: from Drive (MyDrive/DataMate/data/train/ if you have it, otherwise unzipped from MyDrive/DataMate/train.zip)
 TRAIN = Path("/content/snap/train"); TRAIN.parent.mkdir(parents=True, exist_ok=True)
 if not TRAIN.exists():
     folder, zip_path = Path(DRIVE) / "data/train", Path(DRIVE) / "train.zip"
@@ -92,7 +84,7 @@ print("training data:", TRAIN)
 ''')
 
 add("code", '''
-# 6. Model: use the copy on Drive, or download it once (EXAMPLE: MODEL_REPO) and keep a copy on Drive for next time
+# 5. Model: use the copy on Drive, or download it once (EXAMPLE: MODEL_REPO) and keep a copy on Drive for next time
 MODEL = Path("/content/snap/models") / MODEL_NAME; DRIVE_MODEL = Path(DRIVE) / "models" / MODEL_NAME
 source = "already on local disk"
 if not MODEL.exists():
@@ -103,12 +95,11 @@ if not MODEL.exists():
         from huggingface_hub import snapshot_download
         snapshot_download(MODEL_REPO, local_dir=str(MODEL))
         shutil.copytree(MODEL, DRIVE_MODEL)
-print(sh(f"python /content/DataMate/tools/count_params.py {MODEL}").splitlines()[0], "(limit for ALL models together: 15,000,000,000)")
-print("model:", MODEL_REPO, "|", source, "| check license and release date on the model card")
+print("model:", MODEL_REPO, "|", source)
 ''')
 
 add("code", '''
-# 7. Real run: 30 training questions. The model server starts automatically (memory limited to about 32 GB, like the competition GPU).
+# 6. Real run: 30 training questions. The model server starts automatically (memory limited to about 32 GB, like the competition GPU).
 SUB = Path("/content/subset"); shutil.rmtree(SUB, ignore_errors=True)
 print(colab_helpers.make_subset_split(TRAIN, SUB, 2, QUESTIONS), "questions selected")
 OUT = Path("/content/out/subset"); shutil.rmtree(OUT, ignore_errors=True)
@@ -118,13 +109,13 @@ args = ["datamate.run", "--dev", "--config", "config/colab.json", "--data-dir", 
 for k, v in sets.items(): args += ["--set", f"{k}={v}"]
 r = run(args); print(r.stderr[-1500:])
 assert r.returncode == 0, "run failed: see /content/out/subset/logs/replica-0.log"
-print(run(["datamate.eval.score", "--pred", f"{OUT}/submission.jsonl", "--answers", f"{SUB}/answers.jsonl"]).stdout)
 print(f"done in {(time.time()-T0)/60:.1f} min. Results: {OUT}")
 ''')
 
 add("code", '''
-# 8. Save the results to Drive
-dest = Path(DRIVE) / "runs" / time.strftime("%Y-%m-%d-%H%M"); shutil.copytree(OUT, dest); print("saved to", dest)
+# 7. Save the results to Drive
+dest = Path(DRIVE) / "runs" / time.strftime("%Y-%m-%d-%H%M"); shutil.copytree(OUT, dest); shutil.copy(SUB / "answers.jsonl", dest / "answers.jsonl")
+print("saved to", dest, "\\nScore it on your own computer (no GPU needed): python -m datamate.eval.score --pred <dest>/submission.jsonl --answers <dest>/answers.jsonl")
 ''')
 
 

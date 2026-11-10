@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate notebooks/BAKEOFF_G4.ipynb (kept in code so the notebook is reviewable as text)."""
+"""Generate notebooks/BAKEOFF_G4.ipynb (kept as code so it is reviewable as text)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import json
 import sys
 from pathlib import Path
 
-MD, CODE = "markdown", "code"
 cells: list[tuple[str, str]] = []
 
 
@@ -15,210 +14,129 @@ def add(kind: str, text: str) -> None:
     cells.append((kind, text.strip("\n")))
 
 
-add(MD, """
-# BAKEOFF_G4 — model bake-off and determinism investigation (TASKS M3-01, M3-08)
+add("markdown", """
+# Model bake-off (GPU part only)
 
-**Purpose.** Produce *evidence* for the lead's DEC-3 (model and base image). This notebook **does not decide DEC-3**.
-For each candidate it (1) verifies revision, license, release date and parameter count, (2) serves it with vLLM on one
-GPU capped to the memory of an RTX 5090 (32 GB), (3) measures PA on **whole held-out training businesses**, (4) runs the
-same configuration twice to measure determinism, (5) measures throughput, and (6) runs a determinism investigation matrix
-(max_num_seqs, prefix caching, VLLM_BATCH_INVARIANT, structured outputs).
+**Run all, once.** This notebook only does what needs the GPU: it serves each candidate model and runs the same held-out training businesses twice,
+then runs the determinism experiments (batch size, prefix cache, `VLLM_BATCH_INVARIANT`, structured outputs) on a small subset.
+Everything is saved to Google Drive under `DataMate/bakeoff/`.
 
-**Reproducibility.** It runs the production entry point (`python -m datamate.run`, no `--dev`) from a **pinned commit on `main`**
-(`REPO_COMMIT`, 40 hex characters; the first code cell refuses to run otherwise). It replaces the earlier exploratory L4 notebook, which
-ran on sm_89, used unmerged contracts/templates and checked neither licenses nor release dates.
+**The analysis runs on your own computer, without a GPU:**
+`python tools/bakeoff_report.py --runs <downloaded bakeoff folder>` prints PA, determinism and throughput per candidate, and the experiment table.
+Licence, release date and parameter count are checked there too (`--verify`).
 
-**Hardware caveat.** Valid evidence for the target needs a Blackwell GPU (compute capability 12.0, Colab **G4**). On any other GPU
-(L4 = 8.9, A100 = 8.0) the notebook still runs but marks every result `NOT TARGET HARDWARE`.
-
-**Held-out rule.** No prompt, threshold or few-shot example may be tuned on the evaluated businesses. The bank is off (`solver.fewshot_bank_path = null`).
-Never point `TRAIN_DIR` at public or private test data (the notebook refuses a split without `answers.jsonl`; test data has none).
+Only manual step: put `train.zip` into `MyDrive/DataMate/`. The candidates below are **examples**; the model decision is the team lead's.
 """)
 
-add(CODE, '''
-# ---- Parameters (edit only this cell) -------------------------------------------------------
-REPO_URL    = "https://github.com/Kyoyooo/DataMate"
-REPO_COMMIT = "REPLACE_WITH_40_HEX_COMMIT_ON_MAIN"      # must be a commit that is on main
-TRAIN_DIR   = "/content/drive/MyDrive/DataMate/data/train"   # training split with answers.jsonl
-WORK_DIR    = "/content/bakeoff"
-FOLD, FOLDS = 0, 5                 # held-out = businesses of fold FOLD (SPEC §7.14: sha256 rank mod 5)
-MAX_PER_BUSINESS = None            # None = all questions of the held-out businesses
-DET_SUBSET_PER_BUSINESS = 6        # questions per business in the determinism matrix (time)
-MEMORY_CAP_GIB = 32.0              # RTX 5090 memory to emulate
-REPLICAS = 1                       # Colab has one GPU
-# Candidates: every field must be filled from the model card at a fixed commit. `revision` = 40-hex commit sha.
-CANDIDATES = [
-    # {"name": "qwen3-8b",  "repo": "Qwen/Qwen3-8B",  "revision": "<40-hex>", "dtype": "bfloat16", "quantization": None, "reasoning_parser": None},
-    # {"name": "qwen3-14b-fp8", "repo": "Qwen/Qwen3-14B-FP8", "revision": "<40-hex>", "dtype": "auto", "quantization": None, "reasoning_parser": None},
-]
+add("code", '''
+CANDIDATES = ["Qwen/Qwen3-8B"]          # EXAMPLES (Hugging Face repo ids). Add more, e.g. "Qwen/Qwen3-14B-FP8"
+FOLD = 0                                # held-out = whole businesses of this fold (0..4)
+DETERMINISM_QUESTIONS_PER_BUSINESS = 6  # size of the subset for the determinism experiments
+DRIVE = "/content/drive/MyDrive/DataMate"
 ''')
 
-add(CODE, '''
-import re, subprocess, sys, json, os, shutil, time
-assert re.fullmatch(r"[0-9a-f]{40}", REPO_COMMIT), "set REPO_COMMIT to the 40-hex commit of main under test"
-assert CANDIDATES, "fill CANDIDATES (name, repo, 40-hex revision)"
-assert os.path.isfile(f"{TRAIN_DIR}/answers.jsonl"), "TRAIN_DIR must be a TRAINING split (answers.jsonl present)"
-def sh(cmd, **kw):
-    print("$", cmd); r = subprocess.run(cmd, shell=True, text=True, capture_output=True, **kw)
-    print(r.stdout[-3000:], r.stderr[-1500:]); return r
-''')
-
-add(MD, "## 1. Environment (record it; compare with the target)")
-add(CODE, '''
-r = sh("nvidia-smi --query-gpu=index,name,driver_version,memory.total,compute_cap --format=csv,noheader")
-gpus = [x.split(", ") for x in r.stdout.strip().splitlines()]
-assert gpus, "no GPU"
-COMPUTE_CAP = gpus[0][4].strip(); TOTAL_GIB = float(gpus[0][3].split()[0]) / 1024
-TARGET_HW = COMPUTE_CAP == "12.0"
-print("compute capability", COMPUTE_CAP, "->", "TARGET HARDWARE" if TARGET_HW else "NOT TARGET HARDWARE (results are indicative only)")
-''')
-
-add(CODE, '''
-shutil.rmtree("/content/DataMate", ignore_errors=True)
-sh(f"git clone {REPO_URL} /content/DataMate && cd /content/DataMate && git checkout {REPO_COMMIT}")
-head = sh("cd /content/DataMate && git rev-parse HEAD").stdout.strip()
-assert head == REPO_COMMIT, (head, REPO_COMMIT)
-assert sh(f"cd /content/DataMate && git merge-base --is-ancestor {REPO_COMMIT} origin/main").returncode == 0, "commit is not on main"
-# project layer only; vLLM / torch / transformers come from the Colab image (record versions below)
-sh("cd /content/DataMate && pip install -q 'duckdb>=1.1,<2' 'pydantic>=2.7,<3' && pip install -q -e . --no-deps")
-sys.path.insert(0, "/content/DataMate/tools"); sys.path.insert(0, "/content/DataMate/src")
-import bakeoff
-sh("pip list 2>/dev/null | grep -iE '^(vllm|torch|transformers|huggingface|duckdb|pydantic) '")
-''')
-
-add(MD, """
-## 2. Candidate verification (revision, license, release date, parameters)
-`first_commit_date` is the date of the earliest commit of the repository: an **upper bound** on the public release date.
-A human must still confirm the release date and license terms on the model card; `UNVERIFIED` is never treated as pass.
-""")
-add(CODE, '''
-from huggingface_hub import HfApi, snapshot_download
-api, verified, MODEL_DIRS = HfApi(), [], {}
-for spec in CANDIDATES:
-    d = snapshot_download(spec["repo"], revision=spec["revision"], local_dir=f"{WORK_DIR}/models/{spec['name']}")
-    MODEL_DIRS[spec["name"]] = d
-    info = api.model_info(spec["repo"], revision=spec["revision"])
-    commits = api.list_repo_commits(spec["repo"])
-    first = min(c.created_at for c in commits).date().isoformat()
-    hub = {"license": (info.card_data.license if info.card_data else None), "sha": info.sha, "first_commit_date": first}
-    out = json.loads(sh(f"python /content/DataMate/tools/count_params.py {d} --json").stdout or "{}")
-    verified.append(bakeoff.verify_candidate(spec, hub, out.get("parameters")))
-import pandas as pd
-pd.DataFrame(verified)[["name", "revision_fixed", "license", "license_text", "release_date", "first_commit_date", "parameters", "param_limit", "all_pass"]]
-''')
-
-add(MD, "## 3. Held-out split (whole businesses)")
-add(CODE, '''
-SPLIT = f"{WORK_DIR}/heldout_fold{FOLD}"
-shutil.rmtree(SPLIT, ignore_errors=True)
-held_out = bakeoff.make_fold_split(__import__("pathlib").Path(TRAIN_DIR), __import__("pathlib").Path(SPLIT), FOLD, FOLDS, MAX_PER_BUSINESS)
-print(len(held_out), "held-out businesses:", held_out)
-ANSWERS = __import__("pathlib").Path(SPLIT) / "answers.jsonl"
-''')
-
-add(MD, """
-## 4. Run helper
-Production entry point with a generated config; every serving value is explicit and recorded in `run.json`. The server memory is capped with
-`gpu_memory_utilization = 32 GiB / total memory` so that KV-cache capacity resembles an RTX 5090.
-""")
-add(CODE, '''
+add("code", '''
+# 1. Basics: Drive, GPU, vLLM, project code
+import json, os, re, shutil, subprocess, sys, time, zipfile
 from pathlib import Path
-def make_config(cand, tag, **over):
-    cfg = {
-      "work_dir": f"{WORK_DIR}/work/{cand['name']}-{tag}",
-      "model": {"backend": "http", "path": MODEL_DIRS[cand["name"]], "revision": cand["revision"],
-                "structured_outputs": over.pop("structured_outputs", True)},
-      "serving": {"mode": "managed", "replicas": REPLICAS, "dtype": cand.get("dtype", "bfloat16"),
-                  "quantization": cand.get("quantization"), "reasoning_parser": cand.get("reasoning_parser"),
-                  "max_model_len": 16384, "max_num_seqs": over.pop("max_num_seqs", 64),
-                  "gpu_memory_utilization": bakeoff.gpu_memory_fraction(TOTAL_GIB, MEMORY_CAP_GIB),
-                  "enable_prefix_caching": over.pop("enable_prefix_caching", True),
-                  "env": over.pop("env", {}), "startup_timeout_s": 1800},
-      "concurrency": {"questions_per_replica": over.pop("questions_per_replica", 24), "setup_workers": 4},
-      "exec_limits": {"workers": 8},
-      "solver": {"tokenizer": "model", "template_version": "v1", "fewshot_bank_path": None},
-    }
+T0 = time.time()
+def sh(cmd, tail=1200):
+    r = subprocess.run(cmd, shell=True, text=True, capture_output=True); print(r.stdout[-tail:], r.stderr[-600:])
+    assert r.returncode == 0, f"failed: {cmd}"; return r.stdout
+from google.colab import drive
+drive.mount("/content/drive"); Path(DRIVE).mkdir(parents=True, exist_ok=True)
+gpu_name, gpu_mem, cap = [x.strip() for x in sh("nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader").strip().split(",")]
+TOTAL_GIB = float(gpu_mem.split()[0]) / 1024
+print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(not the competition GPU type: results are only indicative)")
+if subprocess.run([sys.executable, "-c", "import vllm"], capture_output=True).returncode != 0: sh("pip install -q vllm", tail=500)
+assert subprocess.run([sys.executable, "-c", "import vllm"], capture_output=True).returncode == 0, "vLLM not importable: Runtime -> Restart session, then Run all again"
+shutil.rmtree("/content/DataMate", ignore_errors=True)
+sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
+sh("cd /content/DataMate && pip install -q -r requirements.in && pip install -q -e . --no-deps")
+sys.path[:0] = ["/content/DataMate/tools", "/content/DataMate/src"]
+import bakeoff
+COMMIT = sh("cd /content/DataMate && git rev-parse HEAD").strip(); print("commit:", COMMIT)
+''')
+
+add("code", '''
+# 2. Training data (from MyDrive/DataMate/train.zip) and the held-out businesses
+TRAIN = Path("/content/snap/train"); TRAIN.parent.mkdir(parents=True, exist_ok=True)
+if not TRAIN.exists():
+    zp = Path(DRIVE) / "train.zip"; assert zp.is_file(), f"Put train.zip into {DRIVE}/ on Google Drive, then run this cell again."
+    with zipfile.ZipFile(zp) as z: z.extractall(TRAIN.parent)
+SPLIT, DET = Path("/content/heldout"), Path("/content/det_subset")
+for d in (SPLIT, DET): shutil.rmtree(d, ignore_errors=True)
+held_out = bakeoff.make_fold_split(TRAIN, SPLIT, FOLD, 5)
+bakeoff.make_fold_split(TRAIN, DET, FOLD, 5, DETERMINISM_QUESTIONS_PER_BUSINESS)
+print(len(held_out), "held-out businesses")
+''')
+
+add("code", '''
+# 3. Models: from Drive, or downloaded once (EXAMPLES) and kept on Drive
+from huggingface_hub import snapshot_download
+MODELS = {}
+for repo in CANDIDATES:
+    name = repo.split("/")[-1]; local = Path("/content/snap/models") / name; saved = Path(DRIVE) / "models" / name
+    if not local.exists():
+        local.parent.mkdir(parents=True, exist_ok=True)
+        if saved.is_dir(): shutil.copytree(saved, local)
+        else: snapshot_download(repo, local_dir=str(local)); shutil.copytree(local, saved)
+    MODELS[name] = local
+print(list(MODELS))
+''')
+
+add("code", '''
+# 4. Run helper: the model server starts automatically (memory limited to about 32 GB, like the competition GPU)
+OUT_ROOT = Path(DRIVE) / "bakeoff" / time.strftime("%Y-%m-%d-%H%M"); (OUT_ROOT / "runs").mkdir(parents=True, exist_ok=True)
+ENV = {**os.environ, "PYTHONPATH": "/content/DataMate/src", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONHASHSEED": "0"}
+def run_once(name, tag, split, **over):
+    out = Path("/content/runs") / f"{name}-{tag}"; shutil.rmtree(out, ignore_errors=True)
+    serving = {"gpu_memory_utilization": bakeoff.gpu_memory_fraction(TOTAL_GIB, 32.0), "max_num_seqs": over.pop("max_num_seqs", 64),
+               "enable_prefix_caching": over.pop("enable_prefix_caching", True), "env": over.pop("env", {})}
+    cfg = {"work_dir": f"/content/work/{name}-{tag}", "model": {"path": str(MODELS[name]), "structured_outputs": over.pop("structured_outputs", True)},
+           "serving": {**json.loads(Path("/content/DataMate/config/colab.json").read_text())["serving"], **serving},
+           "concurrency": {"questions_per_replica": over.pop("questions_per_replica", 24), "setup_workers": 4}, "exec_limits": {"workers": 8},
+           "solver": {"tokenizer": "model"}}
     assert not over, over
-    p = Path(WORK_DIR) / "configs" / f"{cand['name']}-{tag}.json"; p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2)); return p
-
-def run_once(cand, tag, split=SPLIT, **over):
-    out = Path(WORK_DIR) / "runs" / f"{cand['name']}-{tag}"; shutil.rmtree(out, ignore_errors=True)
-    cfg = make_config(cand, tag, **over)
-    t = time.time()
-    r = subprocess.run([sys.executable, "-m", "datamate.run", "--config", str(cfg), "--data-dir", split, "--result-dir", str(out)],
-                       cwd="/content/DataMate", text=True, capture_output=True,
-                       env={**os.environ, "PYTHONPATH": "/content/DataMate/src", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
-                            "PYTHONHASHSEED": "0", "VLLM_NO_USAGE_STATS": "1", "DO_NOT_TRACK": "1"})
-    print(tag, "exit", r.returncode, f"{time.time()-t:.0f}s", r.stderr[-600:])
-    return out, r.returncode
+    p = Path("/content/configs") / f"{name}-{tag}.json"; p.parent.mkdir(exist_ok=True); p.write_text(json.dumps(cfg))
+    t = time.time(); r = subprocess.run([sys.executable, "-m", "datamate.run", "--config", str(p), "--data-dir", str(split), "--result-dir", str(out)],
+                                        cwd="/content/DataMate", env=ENV, text=True, capture_output=True)
+    print(f"{name} {tag}: exit {r.returncode}, {time.time()-t:.0f}s", r.stderr[-300:])
+    if out.exists(): shutil.copytree(out, OUT_ROOT / "runs" / out.name, dirs_exist_ok=True)   # keep even failed runs
+    return r.returncode
 ''')
 
-add(MD, "## 5. Per candidate: two identical runs → PA, determinism, throughput")
-add(CODE, '''
-results = {}
-for cand, ver in zip(CANDIDATES, verified):
-    a, ca = run_once(cand, "A1"); b, cb = run_once(cand, "A2")
-    if ca or cb: results[cand["name"]] = {"verification": ver, "error": f"exit codes {ca},{cb}"}; continue
-    results[cand["name"]] = {"verification": ver, "target_hardware": TARGET_HW, "run_a": bakeoff.run_summary(a, ANSWERS),
-                             "determinism": bakeoff.compare_determinism(a, b, ANSWERS)}
-Path(WORK_DIR, "bakeoff_results.json").write_text(json.dumps(results, indent=2, default=str))
-for n, r in results.items():
-    print(n, "PA", (r.get("run_a") or {}).get("pa"), "| identical-output rate", (r.get("determinism") or {}).get("identical_output_rate"),
-          "| answers changed", (r.get("determinism") or {}).get("answers_changed"), "| dPA", (r.get("determinism") or {}).get("delta_pa"))
+add("code", '''
+# 5. Each candidate: two identical runs on the held-out businesses
+status = {}
+for name in MODELS:
+    status[f"{name}-A1"] = run_once(name, "A1", SPLIT); status[f"{name}-A2"] = run_once(name, "A2", SPLIT)
 ''')
 
-add(MD, """
-## 6. Determinism investigation
-Hypotheses for output drift at temperature 0 (seen on the L4 exploration: identical requests produced different raw text and some different answers):
-batch composition (continuous batching with concurrent requests changes floating-point reduction order), prefix caching (cache hit vs miss changes the
-computation path), kernel non-invariance (`VLLM_BATCH_INVARIANT=1` where the installed vLLM supports it), and structured-output masking.
-Each variant below is run **twice** on the same small subset with the same concurrency; the table reports how often an *identical request* gave a *different raw output*.
-A variant that fails to start (e.g. unsupported env var) is recorded as an error, never silently skipped.
-""")
-add(CODE, '''
-DET = f"{WORK_DIR}/det_subset"; shutil.rmtree(DET, ignore_errors=True)
-bakeoff.make_fold_split(Path(TRAIN_DIR), Path(DET), FOLD, FOLDS, DET_SUBSET_PER_BUSINESS)
-VARIANTS = {
-  "baseline (seqs=64, prefix cache on)": {},
-  "serial (max_num_seqs=1, 1 worker)": {"max_num_seqs": 1, "questions_per_replica": 1},
-  "prefix caching off": {"enable_prefix_caching": False},
-  "VLLM_BATCH_INVARIANT=1": {"env": {"VLLM_BATCH_INVARIANT": "1"}},
-  "structured outputs off": {"structured_outputs": False},
-}
-cand = CANDIDATES[0]   # repeat the cell for other candidates if time allows
-matrix = []
-for name, over in VARIANTS.items():
-    tag = re.sub(r"\\W+", "-", name)[:24]
-    a, ca = run_once(cand, f"D-{tag}-1", DET, **dict(over)); b, cb = run_once(cand, f"D-{tag}-2", DET, **dict(over))
-    if ca or cb:
-        matrix.append({"variant": name, "error": f"exit {ca},{cb}"}); continue
-    d = bakeoff.compare_determinism(a, b)
-    matrix.append({"variant": name, "identical_output_rate": d["identical_output_rate"], "calls_same_request": d["calls_same_request"],
-                   "different_output": d["calls_same_request_different_output"], "answers_changed": d["answers_changed"],
-                   "submissions_identical": d["submissions_byte_identical"], "wall_s": bakeoff.throughput(a)["wall_s"]})
-pd.DataFrame(matrix)
+add("code", '''
+# 6. Determinism experiments on the first candidate: each variant twice on the small subset
+VARIANTS = {"baseline": {}, "serial": {"max_num_seqs": 1, "questions_per_replica": 1}, "no-prefix-cache": {"enable_prefix_caching": False},
+            "batch-invariant": {"env": {"VLLM_BATCH_INVARIANT": "1"}}, "no-structured-outputs": {"structured_outputs": False}}
+first = next(iter(MODELS))
+for v, over in VARIANTS.items():
+    status[f"{first}-D-{v}-1"] = run_once(first, f"D-{v}-1", DET, **dict(over)); status[f"{first}-D-{v}-2"] = run_once(first, f"D-{v}-2", DET, **dict(over))
 ''')
 
-add(MD, """
-## 7. Hand-off
-Save `bakeoff_results.json` and the table above to the shared Drive folder and attach them to the DEC-3 record (`docs/runbooks/bakeoff.md`).
-Report to the lead: per-candidate PA with its 95% interval over questions, the determinism rate, projected 500-question time on 2 GPUs (per-GPU throughput x 2 only if
-`REPLICAS = 1` here), every `UNVERIFIED` / `FAIL` flag, whether the hardware was the target, and which determinism variant (if any) removed the drift.
-**No model is selected by this notebook.**
-""")
-add(CODE, '''
-print(json.dumps({"commit": REPO_COMMIT, "target_hardware": TARGET_HW, "compute_capability": COMPUTE_CAP,
-                  "candidates": [v["name"] for v in verified], "all_verified": all(v["all_pass"] for v in verified)}, indent=2))
+add("code", '''
+# 7. Save a description of what ran, then download the folder (or open it from Drive on your computer)
+shutil.copy(SPLIT / "answers.jsonl", OUT_ROOT / "answers.jsonl"); shutil.copy(DET / "answers.jsonl", OUT_ROOT / "answers_det.jsonl")
+(OUT_ROOT / "meta.json").write_text(json.dumps({"commit": COMMIT, "gpu": gpu_name, "compute_capability": cap, "candidates": CANDIDATES,
+    "models": {k: str(v.name) for k, v in MODELS.items()}, "variants": list(VARIANTS), "fold": FOLD, "exit_codes": status,
+    "minutes": round((time.time() - T0) / 60, 1)}, indent=2))
+print("saved to", OUT_ROOT, "\\nNext, on your own computer: python tools/bakeoff_report.py --runs <that folder> --verify")
 ''')
 
 
 def build() -> dict:
     nb_cells = []
     for kind, text in cells:
-        lines = text.splitlines(keepends=True)
-        c = {"cell_type": kind, "metadata": {}, "source": lines}
-        if kind == CODE:
+        c = {"cell_type": kind, "metadata": {}, "source": text.splitlines(keepends=True)}
+        if kind == "code":
             c.update(execution_count=None, outputs=[])
         nb_cells.append(c)
     return {"cells": nb_cells, "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python",

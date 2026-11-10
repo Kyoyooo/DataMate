@@ -52,8 +52,9 @@ def test_notebook_is_generated_clean_and_valid_python():
     for src in code:
         ast.parse(src)
     joined = "\n".join(code)
-    assert "config/colab.json" in joined and "PA" in joined or "datamate.eval.score" in joined
-    # everything needed in one run: vLLM, data from train.zip, an example model download, scoring
-    for needle in ("import vllm", "train.zip", "snapshot_download", "count_params", "PA", "HF_HUB_OFFLINE"):
+    # GPU work only: vLLM, data, model, the real run. CPU work (fixture, scoring, parameter count) is done locally.
+    for needle in ("import vllm", "train.zip", "snapshot_download", "config/colab.json", "HF_HUB_OFFLINE"):
         assert needle in joined, needle
+    for cpu_only in ("tests/fixtures", "count_params", "eval.score\"]"):
+        assert cpu_only not in joined, cpu_only
     assert "MODEL_REPO" in joined.split("\n")[0] + "\n".join(code[:1])  # the model is one editable parameter
