@@ -1,0 +1,7 @@
+{
+  "work_dir": "out/work",
+  "model": {
+    "backend": "replay",
+    "replay_path": "tests/fixtures/model_calls/split_mini.scripted.jsonl"
+  }
+}
