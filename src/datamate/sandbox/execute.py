@@ -37,14 +37,19 @@ def _encode(value: Any) -> Any:
     return value
 
 
-def open_readonly(db_path: str, limits: ExecLimits) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(db_path, read_only=True, config={
+def open_readonly(db_path: str, limits: ExecLimits,
+                  temp_directory: str | None = None) -> duckdb.DuckDBPyConnection:
+    config: dict[str, Any] = {
         "threads": 1,
         "memory_limit": f"{limits.memory_limit_mb}MB",
         "enable_external_access": False,
         "autoinstall_known_extensions": False,
         "autoload_known_extensions": False,
-    })
+    }
+    if temp_directory:  # spill files of a sandbox worker stay in its own scratch directory
+        config["temp_directory"] = temp_directory
+        config["max_temp_directory_size"] = "4GB"
+    con = duckdb.connect(db_path, read_only=True, config=config)
     try:
         con.execute("SET lock_configuration = true")
     except duckdb.InvalidInputException as exc:
@@ -55,13 +60,18 @@ def open_readonly(db_path: str, limits: ExecLimits) -> duckdb.DuckDBPyConnection
     return con
 
 
-def run_sql(db_path: str, sql: str, limits: ExecLimits) -> ExecutionResult:
-    """Execute ``sql`` exactly as given. Errors are returned, never raised."""
+def run_sql(db_path: str, sql: str, limits: ExecLimits, *,
+            connection: duckdb.DuckDBPyConnection | None = None,
+            temp_directory: str | None = None) -> ExecutionResult:
+    """Execute ``sql`` exactly as given. Errors are returned, never raised.
+
+    ``connection`` (sandbox workers) reuses a cached read-only connection and is not closed.
+    """
     started = time.monotonic()
     timed_out = threading.Event()
     con = None
     try:
-        con = open_readonly(db_path, limits)
+        con = connection or open_readonly(db_path, limits, temp_directory)
 
         def _interrupt() -> None:
             timed_out.set()
@@ -91,5 +101,5 @@ def run_sql(db_path: str, sql: str, limits: ExecLimits) -> ExecutionResult:
             duration_ms=int((time.monotonic() - started) * 1000),
         )
     finally:
-        if con is not None:
+        if con is not None and connection is None:
             con.close()
