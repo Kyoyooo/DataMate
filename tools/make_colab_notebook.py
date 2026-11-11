@@ -49,6 +49,8 @@ drive.mount("/content/drive"); Path(DRIVE).mkdir(parents=True, exist_ok=True)
 gpu = sh("nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader").strip()
 gpu_name, gpu_mem, cap = [x.strip() for x in gpu.split(",")]
 print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(not the competition GPU type: speed and memory numbers are only indicative)")
+assert float(cap) >= 8.0 and float(gpu_mem.split()[0]) / 1024 >= 22, (
+    f"{gpu_name} ({gpu_mem}, cc {cap}) cannot serve the model: Runtime -> Change runtime type -> G4 (Blackwell, like the RTX 5090)")
 ''')
 
 add("code", '''

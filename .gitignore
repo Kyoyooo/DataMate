@@ -42,3 +42,6 @@ dist/
 
 # Local reference project (not part of this codebase; contains copies of competition data)
 /baseline_DataMate/
+
+# Downloaded GPU check results (contain training data; never commit)
+/gpu_check/

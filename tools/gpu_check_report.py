@@ -137,6 +137,25 @@ def replay_fixture(recording: Path, colab_fixture: Path) -> tuple[bool, str]:
         return same and misses == 0, f"replay misses {misses}; submission identical to the GPU run: {same}"
 
 
+def served(run: Path) -> bool:
+    """True when the model answered at least one call in this run (the server really started)."""
+    run_json = json.loads((run / "logs" / "run.json").read_text(encoding="utf-8"))
+    active = (run_json.get("replicas") or {}).get("active")
+    if active is not None and not active:
+        return False
+    return any(c.get("content") or c.get("reasoning") for r in _jsonl(run / "logs" / "questions.jsonl")
+               for c in r.get("calls", []))
+
+
+def server_error(run: Path) -> str:
+    """Last error line of the replica logs (why the server did not start)."""
+    lines = []
+    for log in sorted((run / "logs").glob("replica-*.log")):
+        lines += [x.strip() for x in log.read_text(encoding="utf-8", errors="replace").splitlines()
+                  if "Error" in x or "error:" in x]
+    return lines[-1][-300:] if lines else "no replica log"
+
+
 def report(runs: Path) -> Checks:
     from datamate.eval.score import score_files
 
@@ -156,10 +175,25 @@ def report(runs: Path) -> Checks:
     else:
         ck.add("DEC-3", "total parameters <= 15 B", "NOT RUN")
 
+    # did the model server start in each run? Model-dependent checks of a run without a server
+    # are NOT RUN (an all-abstain run would otherwise "pass" determinism, overflow, thinking-off)
+    ok_runs: dict[str, Path] = {}
+    for tag in ("fixture", "train-A1", "train-A2", "thinking-on", "restart"):
+        d = _run_dir(runs, tag)
+        if d is None:
+            continue
+        up = served(d)
+        ck.verdict("M4-03", f"model server started and answered ({tag})", up, None, "" if up else server_error(d))
+        if up:
+            ok_runs[tag] = d
+    no_server = "model server did not start (see the M4-03 line)"
+
     # M3-02 / M3-13: fixture with the real model
-    fx = _run_dir(runs, "fixture")
+    fx = ok_runs.get("fixture")
     if fx is None:
-        ck.add("M3-02", "real HTTP calls on the fixture", "NOT RUN", detail=str(status.get("fixture")))
+        ck.add("M3-02", "real HTTP calls on the fixture", "NOT RUN",
+               detail=no_server if _run_dir(runs, "fixture") else str(status.get("fixture")))
+        ck.add("M3-13", "CPU replay of the real recording", "NOT RUN", detail="needs the fixture run")
     else:
         calls = [c for r in _jsonl(fx / "logs" / "questions.jsonl") for c in r["calls"]]
         bad = [c for c in calls if c.get("error") or (c.get("transport") or {}).get("http_status") != 200]
@@ -176,9 +210,14 @@ def report(runs: Path) -> Checks:
             ck.add("M3-13", "CPU replay of the real recording", "NOT RUN", detail="recording missing")
 
     # training runs
-    a1, a2 = _run_dir(runs, "train-A1"), _run_dir(runs, "train-A2")
+    a1, a2 = ok_runs.get("train-A1"), ok_runs.get("train-A2")
     if a1 is None:
-        ck.add("M3-04", "parse validity", "NOT RUN", detail=str(status.get("train-A1")))
+        detail = no_server if _run_dir(runs, "train-A1") else str(status.get("train-A1"))
+        for task, name in (("M3-04", "parse validity"), ("M3-05", "solve success"),
+                           ("M3-03", "no context overflow in the training run"), ("L-05", "training-subset PA"),
+                           ("M4-02", "fresh session to first scored run"), ("M4-08", "throughput"),
+                           ("L-15", "two identical runs")):
+            ck.add(task, name, "NOT RUN", detail=detail)
     else:
         p = parse_stats(a1, answers)
         ck.verdict("M3-04", f"schema-valid frames >= {PARSE_VALID_MIN:.0%}",
@@ -213,7 +252,8 @@ def report(runs: Path) -> Checks:
                        round(d["delta_pa"], 4), f"answers changed {d['answers_changed']}/{d['questions']}; "
                        f"identical raw output rate {d['identical_output_rate']}")
         else:
-            ck.add("L-15", "two identical runs", "NOT RUN", detail=str(status.get("train-A2")))
+            ck.add("L-15", "two identical runs", "NOT RUN",
+                   detail=no_server if _run_dir(runs, "train-A2") else str(status.get("train-A2")))
 
     # records: every run must pass the submission/log precheck; thinking rule
     inputs = {"fixture": FIXTURE, "train-A1": runs / "subset", "train-A2": runs / "subset",
@@ -227,13 +267,16 @@ def report(runs: Path) -> Checks:
             continue
         ok, detail = precheck(d, data)
         ck.verdict("M4-07", f"precheck of {tag} (submission + logs)", ok, None, detail)
-    off = [r for t in ("fixture", "train-A1") if (d := _run_dir(runs, t)) for r in _jsonl(d / "logs" / "questions.jsonl")]
-    if off:
+    off = [r for t in ("fixture", "train-A1") if (d := ok_runs.get(t)) for r in _jsonl(d / "logs" / "questions.jsonl")]
+    if not off:
+        ck.add("M4-19", "thinking off -> thinking is null", "NOT RUN", detail=no_server)
+    else:
         ck.verdict("M4-19", "thinking off -> thinking is null", all(r["thinking"] is None for r in off),
                    sum(r["thinking"] is not None for r in off), "records with non-null thinking")
-    th = _run_dir(runs, "thinking-on")
+    th = ok_runs.get("thinking-on")
     if th is None:
-        ck.add("M4-19", "thinking on -> thinking logged", "NOT RUN", detail=str(status.get("thinking-on")))
+        ck.add("M4-19", "thinking on -> thinking logged", "NOT RUN",
+               detail=no_server if _run_dir(runs, "thinking-on") else str(status.get("thinking-on")))
     else:
         recs = _jsonl(th / "logs" / "questions.jsonl")
         with_calls = [r for r in recs if r["calls"]]
@@ -243,7 +286,7 @@ def report(runs: Path) -> Checks:
                    f"{nonempty}/{len(with_calls)} records with reasoning text")
 
     # M4-03 restart
-    rs = _run_dir(runs, "restart")
+    rs = ok_runs.get("restart")
     st = status.get("restart") or {}
     if rs is None or not st.get("killed_at_s"):
         ck.add("M4-03", "replica restart during a run", "NOT RUN",

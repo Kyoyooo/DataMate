@@ -82,3 +82,27 @@ def test_report_on_a_simulated_folder(tmp_path):
     assert status("M4-03", "replica restart") == "NOT RUN"
     assert status("M3-03", "schema budget with the real tokenizer") == "NOT RUN"
     assert ck.failed
+
+
+def test_runs_without_a_model_server_are_not_run_never_pass(tmp_path):
+    # 2026-11-11 Colab run: vLLM crashed at startup, every question abstained E_REPLICA_DOWN.
+    # Determinism, overflow and thinking-off must not "pass" on such runs.
+    runs = tmp_path / "gpu_check"
+    (runs / "runs").mkdir(parents=True)
+    for tag in ("train-A1", "train-A2"):
+        out = runs / "runs" / tag
+        dev_run(out)
+        run_json = json.loads((out / "logs" / "run.json").read_text())
+        run_json["replicas"] = {"active": []}
+        (out / "logs" / "run.json").write_text(json.dumps(run_json))
+        (out / "logs" / "replica-0.log").write_text("INFO start\nAttributeError: tokenizer has no attribute x\n")
+    shutil.copy(SPLIT / "answers.jsonl", runs / "answers.jsonl")
+    (runs / "meta.json").write_text(json.dumps({"commit": "0" * 40, "status": {},
+                                                "times_s": {"first scored training run": 60}}))
+    rows = load("gpu_check_report").report(runs).rows
+    by = {(r["task"], r["check"].split(" (")[0]): r for r in rows}
+    assert by[("M4-03", "model server started and answered")]["status"] == "FAIL"
+    assert "AttributeError" in by[("M4-03", "model server started and answered")]["detail"]
+    for task, name in (("L-15", "two identical runs"), ("M3-04", "parse validity"), ("M4-02", "fresh session to first scored run"),
+                       ("M3-03", "no context overflow in the training run"), ("M4-19", "thinking off -> thinking is null")):
+        assert by[(task, name)]["status"] == "NOT RUN", (task, name)

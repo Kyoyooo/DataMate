@@ -46,6 +46,7 @@ TORCH_BACKEND = "cu128"
 VLLM_MODULE = "vllm.entrypoints.openai.api_server"
 _PROBE = ("import json, platform, torch, vllm; print(json.dumps({'python': platform.python_version(), "
           "'vllm': vllm.__version__, 'torch': torch.__version__, 'cuda': torch.version.cuda, "
+          "'transformers': __import__('transformers').__version__, "
           "'arch_list': torch.cuda.get_arch_list(), 'cuda_available': torch.cuda.is_available(), "
           "'capability': '.'.join(map(str, torch.cuda.get_device_capability())) if torch.cuda.is_available() else None}))")
 
@@ -54,16 +55,32 @@ def venv_python(venv: Path = VENV) -> Path:
     return venv / "bin" / "python"
 
 
+# Packages that vLLM 0.10.1.1 leaves unbounded but whose later releases break it (transformers 5
+# removed ``all_special_tokens_extended``; seen on Colab 2026-11-11). Pinned to the newest release
+# published before vLLM 0.10.1.1 itself (PyPI upload 2025-08-20), i.e. what its image was built
+# with. Once requirements.lock (pip freeze of the real image, M4-01) exists it is used instead.
+CONTEMPORARY_PINS = {"0.10.1.1": ["transformers==4.55.2", "tokenizers==0.21.4", "huggingface-hub==0.34.4"]}
+CONSTRAINTS = "base-constraints.txt"  # pip freeze of the vLLM install, kept inside the venv
+
+
 def vllm_env_commands(version: str, project: Path, venv: Path = VENV, *, create: bool,
-                      host_python: str = sys.executable) -> list[list[str]]:
-    """Commands that build (or update) the pinned environment; pure, so it is CPU-testable."""
+                      host_python: str = sys.executable) -> dict[str, list[str]]:
+    """Named commands (pure, CPU-testable). Order: uv, venv, base, freeze, project_requirements,
+    project. Like the Dockerfile: the base (vLLM) is installed first, frozen, and the project's
+    requirements are installed with that freeze as constraints, so they cannot change it."""
     py = str(venv_python(venv))
-    cmds = [[host_python, "-m", "pip", "install", "-q", "uv"]]
+    uv = [host_python, "-m", "uv"]
+    lock = project / "requirements.lock"
+    base = uv + ["pip", "install", "--python", py, f"--torch-backend={TORCH_BACKEND}", f"vllm=={version}"]
+    base += ["-c", str(lock)] if lock.is_file() else CONTEMPORARY_PINS.get(version, [])
+    cmds = {"uv": [host_python, "-m", "pip", "install", "-q", "uv"]}
     if create:
-        cmds.append([host_python, "-m", "uv", "venv", "--python", PYTHON, str(venv)])
-    cmds.append([host_python, "-m", "uv", "pip", "install", "--python", py, f"--torch-backend={TORCH_BACKEND}",
-                 f"vllm=={version}", "-r", str(project / "requirements.in")])
-    cmds.append([host_python, "-m", "uv", "pip", "install", "--python", py, "--no-deps", "-e", str(project)])
+        cmds["venv"] = uv + ["venv", "--python", PYTHON, str(venv)]
+    cmds["base"] = base
+    cmds["freeze"] = uv + ["pip", "freeze", "--python", py, "--exclude-editable"]
+    cmds["project_requirements"] = uv + ["pip", "install", "--python", py, "-c", str(venv / CONSTRAINTS),
+                                         "-r", str(project / "requirements.in")]
+    cmds["project"] = uv + ["pip", "install", "--python", py, "--no-deps", "-e", str(project)]
     return cmds
 
 
@@ -97,19 +114,22 @@ def probe_env(py: Path, run=subprocess.run) -> dict | None:
 
 def ensure_vllm_env(version: str, project: Path, venv: Path = VENV, run=subprocess.run) -> tuple[str, dict]:
     """Return (interpreter path, probe info) of a Python 3.12 environment with ``vllm==version``,
-    the project's requirements and the project itself. Builds it on the first call; afterwards
-    it only re-installs the project (a fresh clone may have new requirements)."""
+    the project's requirements and the project itself. Builds the vLLM base on the first call;
+    afterwards it only re-installs the project (a fresh clone may have new requirements)."""
     py = venv_python(venv)
     info = probe_env(py, run)
-    need_vllm = info is None or info.get("vllm") != version
+    rebuild = info is None or info.get("vllm") != version or not (venv / CONSTRAINTS).is_file()
     cmds = vllm_env_commands(version, project, venv, create=not py.exists())
-    if not need_vllm:  # keep the environment; refresh only the project and its requirements
-        cmds = [cmds[0], [cmds[-2][0], "-m", "uv", "pip", "install", "--python", str(py), "-r",
-                          str(project / "requirements.in")], cmds[-1]]
-    for cmd in cmds:
-        r = run(cmd, capture_output=True, text=True)
+    steps = ["uv", "venv", "base", "freeze"] if rebuild else ["uv"]
+    for name in steps + ["project_requirements", "project"]:
+        if name not in cmds:
+            continue
+        r = run(cmds[name], capture_output=True, text=True)
         if r.returncode != 0:
-            raise RuntimeError(f"failed: {' '.join(cmd)}\n{(r.stdout or '')[-1500:]}\n{(r.stderr or '')[-1500:]}")
+            raise RuntimeError(f"failed ({name}): {' '.join(cmds[name])}\n{(r.stdout or '')[-1500:]}\n"
+                               f"{(r.stderr or '')[-1500:]}")
+        if name == "freeze":
+            (venv / CONSTRAINTS).write_text(r.stdout, encoding="utf-8")
     info = probe_env(py, run)
     problems = check_env(info, version)
     if problems:
