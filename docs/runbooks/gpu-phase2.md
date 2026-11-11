@@ -3,7 +3,7 @@
 One Colab session collects every acceptance check that needs the model or a GPU. The notebook only produces raw files; the verdicts are computed on your own computer. Nothing here chooses the model (DEC-3).
 
 ## Before the session
-- Main contains the commit you want to check (the notebook clones `main` and records the commit).
+- The code to check is on GitHub: `main`, or a pushed branch named in the notebook's `BRANCH` setting (the notebook clones it and records the commit).
 - `MyDrive/DataMate/train.zip` exists (the training split). The model is downloaded once and kept under `MyDrive/DataMate/models/`.
 - Colab runtime: a Blackwell GPU (compute capability 12.0) if available. On another GPU the results are indicative only, and the report says so.
 

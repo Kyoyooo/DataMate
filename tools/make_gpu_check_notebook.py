@@ -45,6 +45,7 @@ Then, **on your own computer** (no GPU): download the folder and run
 
 add("code", '''
 MODEL_REPO       = "Qwen/Qwen3-8B"   # EXAMPLE candidate (Hugging Face repo id)
+BRANCH           = "main"            # code to check: "main", or a pushed branch before it is merged
 VLLM_VERSION     = "0.10.1.1"        # same vLLM as the reference base image vllm/vllm-openai:v0.10.1.1 (M4-01)
 PER_BUSINESS     = 2                 # training questions per business for the two identical runs (30 businesses)
 THINKING_QUESTIONS = 10              # 0 = skip the thinking-on run
@@ -73,9 +74,9 @@ print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(
 ''')
 
 add("code", '''
-# 2. Project code (current main)
+# 2. Project code (BRANCH, normally main)
 shutil.rmtree("/content/DataMate", ignore_errors=True)
-sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
+sh(f"git clone -q --branch {BRANCH} https://github.com/Kyoyooo/DataMate /content/DataMate")
 COMMIT = sh("cd /content/DataMate && git rev-parse HEAD").strip()
 sys.path[:0] = ["/content/DataMate/tools"]
 import colab_helpers, bakeoff
@@ -195,7 +196,7 @@ if CTX is not None:
     print("waiting for the context check ..."); CTX.wait(); STATUS["context_check"] = {"exit": CTX.returncode}
 mark("all done")
 (OUT / "meta.json").write_text(json.dumps({
-    "commit": COMMIT, "model_repo": MODEL_REPO, "vllm": PYINFO.get("vllm"), "python_env": PYINFO, "gpu": gpu_name, "compute_capability": cap,
+    "commit": COMMIT, "branch": BRANCH, "model_repo": MODEL_REPO, "vllm": PYINFO.get("vllm"), "python_env": PYINFO, "gpu": gpu_name, "compute_capability": cap,
     "gpu_total_gib": round(TOTAL_GIB, 1), "gpu_memory_utilization": FRAC, "per_business": PER_BUSINESS,
     "status": STATUS, "times_s": TIMES, "minutes": round((time.time() - T0) / 60, 1)}, indent=2))
 print("saved to", OUT)
