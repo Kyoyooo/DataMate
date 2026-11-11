@@ -1,0 +1,22 @@
+# Whole-token question aliases. Original question and data values are preserved.
+# alias<TAB>expansion<TAB>evidence
+dthu	doanh thu	training-question audit
+bn	bao nhiêu	training-question audit
+bnhiu	bao nhiêu	training-question audit
+nhiu	nhiều	training-question audit
+dc	được	training-question audit
+vs	với	training-question audit
+hnay	hôm nay	training-question audit
+trc	trước	training-question audit
+hqua	hôm qua	training-question audit
+sp	sản phẩm	Vietnamese business abbreviation
+sl	số lượng	Vietnamese business abbreviation
+ko	không	Vietnamese question abbreviation
+khg	không	Vietnamese question abbreviation
+hok	không	training-question audit
+j	gì	training-question audit
+z	vậy	training-question audit
+r	rồi	training-question audit
+khong	không	Vietnamese question spelling
+kq	kết quả	Vietnamese question abbreviation
+tb	trung bình	Vietnamese analytics abbreviation

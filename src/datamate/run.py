@@ -32,6 +32,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from datamate.catalog import setup_business
+from datamate.catalog.context import build_context
 from datamate.config import RunConfig, load_config
 from datamate.contracts import (
     CONTRACTS_VERSION,
@@ -112,7 +113,6 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
     split = load_split(data_dir, client=clients[0] if extract_temporal and clients else None,
                        max_tokens=cfg.model.max_tokens.get("rule_profile"))
     questions, invalid, counts = load_questions(data_dir / "questions.jsonl")
-    work_dir = Path(cfg.work_dir)
     outcome: Counter[str] = Counter()
     reasons: Counter[str] = Counter()
 
@@ -120,7 +120,7 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         biz_dir = data_dir / "data" / business_id
         if not biz_dir.is_dir():
             return None, codes.E_INPUT_BUSINESS_MISSING
-        return setup_business(biz_dir, business_id, work_dir), None
+        return setup_business(biz_dir, business_id, cfg), None
 
     with ResultWriter(result_dir) as writer:
         for qid, biz, reason in invalid:
@@ -202,13 +202,13 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
 def _context_builder(cfg: RunConfig) -> ContextBuilder:
     """Token budgeting needs the shipped model's tokenizer; absent in production → exit 2."""
     if cfg.solver.tokenizer == "estimate":
-        return ContextBuilder(CharEstimateTokenizer(), cfg.solver)
+        return build_context(CharEstimateTokenizer(), cfg)
     tok = load_tokenizer(cfg.model.path)
     if tok is None:
         raise ValueError(f"cannot load the tokenizer from model.path {cfg.model.path!r} "
                          "(transformers and local tokenizer files are required; "
                          "solver.tokenizer='estimate' is development-only)")
-    return ContextBuilder(tok, cfg.solver)
+    return build_context(tok, cfg)
 
 
 def _install_sigterm(handler: Callable[[], None]) -> Any:

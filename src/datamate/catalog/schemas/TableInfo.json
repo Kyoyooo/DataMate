@@ -1,0 +1,290 @@
+{
+  "$defs": {
+    "ColumnInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "distinct_count": {
+          "minimum": 0,
+          "title": "Distinct Count",
+          "type": "integer"
+        },
+        "format_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format Note"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "null_count": {
+          "minimum": 0,
+          "title": "Null Count",
+          "type": "integer"
+        },
+        "null_rate": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Null Rate",
+          "type": "number"
+        },
+        "observed_units": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Observed Units",
+          "type": "array"
+        },
+        "original_name": {
+          "title": "Original Name",
+          "type": "string"
+        },
+        "parse_rate": {
+          "default": 1,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Parse Rate",
+          "type": "number"
+        },
+        "raw_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Column"
+        },
+        "semantic_hint": {
+          "anyOf": [
+            {
+              "enum": [
+                "money",
+                "quantity",
+                "percent",
+                "code",
+                "name",
+                "status",
+                "date"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Hint"
+        },
+        "sql_type": {
+          "enum": [
+            "BIGINT",
+            "DECIMAL(38,6)",
+            "DOUBLE",
+            "VARCHAR",
+            "DATE",
+            "TIMESTAMP",
+            "BOOLEAN"
+          ],
+          "title": "Sql Type",
+          "type": "string"
+        },
+        "status_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Column"
+        },
+        "top_values": {
+          "default": [],
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Top Values",
+          "type": "array"
+        },
+        "unit_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit Column"
+        }
+      },
+      "required": [
+        "name",
+        "original_name",
+        "sql_type",
+        "null_count",
+        "distinct_count"
+      ],
+      "title": "ColumnInfo",
+      "type": "object"
+    },
+    "DroppedRows": {
+      "additionalProperties": false,
+      "properties": {
+        "blank_rows": {
+          "default": 0,
+          "title": "Blank Rows",
+          "type": "integer"
+        },
+        "note_rows": {
+          "default": 0,
+          "title": "Note Rows",
+          "type": "integer"
+        },
+        "source_indices": {
+          "additionalProperties": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "default": {},
+          "title": "Source Indices",
+          "type": "object"
+        },
+        "summary_rows": {
+          "default": 0,
+          "title": "Summary Rows",
+          "type": "integer"
+        },
+        "total_rows": {
+          "default": 0,
+          "title": "Total Rows",
+          "type": "integer"
+        }
+      },
+      "title": "DroppedRows",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidate_keys": {
+      "default": [],
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Candidate Keys",
+      "type": "array"
+    },
+    "columns": {
+      "items": {
+        "$ref": "#/$defs/ColumnInfo"
+      },
+      "title": "Columns",
+      "type": "array"
+    },
+    "dropped_rows": {
+      "$ref": "#/$defs/DroppedRows",
+      "default": {
+        "blank_rows": 0,
+        "note_rows": 0,
+        "source_indices": {},
+        "summary_rows": 0,
+        "total_rows": 0
+      }
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "row_count": {
+      "minimum": 0,
+      "title": "Row Count",
+      "type": "integer"
+    },
+    "source_details": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Source Details",
+      "type": "object"
+    },
+    "source_file": {
+      "title": "Source File",
+      "type": "string"
+    },
+    "source_part": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Part"
+    }
+  },
+  "required": [
+    "name",
+    "source_file",
+    "row_count",
+    "columns"
+  ],
+  "title": "TableInfo",
+  "type": "object"
+}

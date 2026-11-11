@@ -1,0 +1,57 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Code"
+    },
+    "column": {
+      "title": "Column",
+      "type": "string"
+    },
+    "mention": {
+      "title": "Mention",
+      "type": "string"
+    },
+    "score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Score",
+      "type": "number"
+    },
+    "strength": {
+      "enum": [
+        "strong",
+        "weak"
+      ],
+      "title": "Strength",
+      "type": "string"
+    },
+    "table": {
+      "title": "Table",
+      "type": "string"
+    },
+    "value": {
+      "title": "Value",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mention",
+    "table",
+    "column",
+    "value",
+    "score",
+    "strength"
+  ],
+  "title": "EntityCandidate",
+  "type": "object"
+}
