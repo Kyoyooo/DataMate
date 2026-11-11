@@ -65,6 +65,48 @@ their maximum selected estimated counts were 8,000 and 7,997 respectively.
 No business/question ID is used by schema-selection logic. The context checker
 does not read answers or call a model.
 
+## CI replay correction: fixture line endings
+
+GitHub CI exposed a replay mismatch that the first WSL run did not reveal: WSL
+read the Windows checkout's CRLF rulebook, whereas a clean Linux checkout uses
+LF. `load_split` deliberately preserves rulebook bytes (after UTF-8 decoding/NFC),
+so the prompt and request hashes differ. The old recording contained CRLF-based
+requests. With Python **3.12.16** and the exact `requirements-cpu.lock`, changing
+only the synthetic rulebook checkout to Git's LF bytes reproduced the CI failure:
+all 13 questions returned `E_REPLAY_MISS`.
+
+The fix pins the synthetic replay rulebook and model-call JSONL files to LF via
+`.gitattributes`, and re-records calls through the existing scripted client on
+Python 3.12.16. It does not normalize mounted competition rulebooks, relax replay
+matching, or remove the exact-answer assertion. A regression test checks the
+fixture's line endings, and replay failures now print per-question reason codes.
+
+Re-record command (development fixture only):
+
+```bash
+python -m datamate.run --dev --config config/dev.json --data-dir tests/fixtures/split_mini --result-dir out/m1/ci-debug/record-lf --set exec_limits.isolation=inprocess --set model.record_path=tests/fixtures/model_calls/split_mini.scripted.jsonl --set concurrency.questions_per_replica=1 --set work_dir=out/m1/ci-debug/record-work
+```
+
+The regenerated fixture run scores 13/13 correct. For an existing Windows
+checkout that still contains CRLF after pulling the attributes file, restore
+the fixture checkout using its pinned attributes:
+
+```bash
+git checkout-index --force -- tests/fixtures/split_mini/rulebook.md
+```
+
+Final verification uses Python **3.12.16**, every version pinned in
+`requirements-cpu.lock`, and source/interpreter/environment on the native Linux
+filesystem: **549 passed, 4 skipped in 58.51s**. The four optional skips are the
+same ones listed above. Report: `out/m1/ci-debug/pytest-python312-linux-fs.xml`.
+
+Running that environment from the mounted Windows filesystem exposed a separate
+2-second worker-start timeout in the existing sandbox replacement test. The
+unchanged test passed on native Linux storage along with the complete suite;
+no sandbox timeout, assertion or production code was changed by this repair.
+The earlier Python 3.10 run above remains historical evidence, not a substitute
+for this pinned Python 3.12 verification.
+
 ## Review boundary
 
 Review additive config and warning registry entries, SchemaCard selection,

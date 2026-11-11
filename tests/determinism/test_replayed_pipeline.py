@@ -19,6 +19,14 @@ REPO = Path(__file__).resolve().parents[2]
 SPLIT = REPO / "tests" / "fixtures" / "split_mini"
 
 
+def test_replay_fixture_rulebook_has_pinned_line_endings():
+    raw = (SPLIT / "rulebook.md").read_bytes()
+    assert b"\r" not in raw, (
+        "Replay hashes include verbatim rulebook bytes. This fixture must use LF "
+        "on all platforms, as pinned in .gitattributes; re-record after source changes."
+    )
+
+
 def fresh_run(tmp: Path, name: str, *extra: str) -> Path:
     out = tmp / name
     proc = subprocess.run(
@@ -51,10 +59,12 @@ def test_two_fresh_processes_are_byte_identical(tmp_path):
 def test_replayed_run_is_correct_and_has_no_misses(tmp_path):
     out = fresh_run(tmp_path, "a", "--set", "concurrency.questions_per_replica=6")
     result = score_files(out / "submission.jsonl", SPLIT / "answers.jsonl")
-    assert set(result["per_id"].values()) == {1}
+    rows = [json.loads(x) for x in (out / "logs" / "questions.jsonl").read_text().splitlines()]
+    assert set(result["per_id"].values()) == {1}, {
+        row["id"]: row["decision"]["reason_code"] for row in rows
+    }
     run_json = json.loads((out / "logs" / "run.json").read_text())
     assert "E_REPLAY_MISS" not in run_json["counts"]["by_reason"]
-    rows = [json.loads(x) for x in (out / "logs" / "questions.jsonl").read_text().splitlines()]
     assert {c["backend"] for r in rows for c in r["calls"]} == {"replay"}
 
 
