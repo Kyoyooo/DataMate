@@ -217,6 +217,19 @@ class RunConfig(_Section):
     entities: EntityConfig = EntityConfig()
     features: FeatureConfig = FeatureConfig()
 
+    @model_validator(mode="after")
+    def _startup_fits_global_stop(self):
+        # The global stop counts from process start (model loading counts toward the 6 hours).
+        # Worst-case managed startup: every replica times out once and once more per restart.
+        s = self.serving
+        if s.mode == "managed":
+            worst = s.startup_timeout_s * (1 + s.max_restarts)
+            if worst >= self.deadlines.global_hard_stop_s:
+                raise ValueError(
+                    f"serving.startup_timeout_s × (1 + max_restarts) = {worst:g} s leaves no time "
+                    f"before deadlines.global_hard_stop_s = {self.deadlines.global_hard_stop_s:g} s")
+        return self
+
     def sha256(self) -> str:
         canonical = json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

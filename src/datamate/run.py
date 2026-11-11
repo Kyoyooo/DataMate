@@ -102,13 +102,16 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         supervisor: ReplicaSupervisor | None = None, context: ContextBuilder | None = None,
         executor: SqlExecutor | None = None, fewshot_bank: FewshotBank | None = None,
         python_executor: SqlExecutor | None = None,
-        serving_record: Callable[[], dict[str, Any]] | None = None) -> int:
+        serving_record: Callable[[], dict[str, Any]] | None = None,
+        started_at: float | None = None) -> int:
     """Run the whole split. ``client`` is one client per replica (a single client = one replica).
 
     An empty client list means the model servers could not be started: every question is
     written as ``abstain`` (E_REPLICA_DOWN) so the submission is still complete.
     """
-    t0 = time.monotonic()
+    # The global stop counts from process start when main() passes ``started_at``: model loading
+    # counts toward the organizers' 6 hours (DG §3.3), so it must count toward our budget too.
+    t0 = time.monotonic() if started_at is None else started_at
     clients = list(client) if isinstance(client, (list, tuple)) else [client]
     split = load_split(data_dir, client=clients[0] if extract_temporal and clients else None,
                        max_tokens=cfg.model.max_tokens.get("rule_profile"))
@@ -224,6 +227,7 @@ def _restore_sigterm(previous: Any) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    started_at = time.monotonic()
     p = argparse.ArgumentParser(prog="python -m datamate.run", description=__doc__.split("\n")[0])
     p.add_argument("--config", type=Path, default=None, help="run config JSON (default: built-in defaults)")
     p.add_argument("--data-dir", type=Path, default=Path("/data"))
@@ -261,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
         if not managed:
             return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
                        overrides=args.overrides, context=context, executor=executor,
-                       fewshot_bank=bank, python_executor=py_executor)
+                       fewshot_bank=bank, python_executor=py_executor, started_at=started_at)
         from datamate.llm.replicas import ReplicaError, ReplicaManager
 
         manager = ReplicaManager(cfg, args.result_dir / "logs")
@@ -276,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
             return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
                        overrides=args.overrides, supervisor=manager if clients else None,
                        serving_record=manager.record, context=context, executor=executor,
-                       fewshot_bank=bank, python_executor=py_executor)
+                       fewshot_bank=bank, python_executor=py_executor, started_at=started_at)
         finally:
             manager.stop()
     finally:
