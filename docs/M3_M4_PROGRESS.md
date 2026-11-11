@@ -136,3 +136,8 @@ Done in one branch for Lead, M3 and M4 (the user asked for all three here). Comm
 - `tools/error_analysis.py` (L-14) ready for the first real run.
 - `.venv/bin/ruff check src tests tools training_code` → clean; `.venv/bin/python -m pytest -q -o addopts=` → 587 passed, 2 skipped.
 
+## 2026-11-11 (4) — first GPU check (Colab T4) and Phase 2 status
+- Run on a Tesla T4 (not the target) at `be20f53`: [evidence](evidence/gpu-check-2026-11-11-t4.md). Real results: Qwen3-8B 8.191 B parameters; real-tokenizer schema budget fits for all 3,000 training questions (M1-10, M3-03 Done); output/log format valid; the no-server safety net produced complete all-abstain submissions on real hardware. No model call succeeded: vLLM 0.10.1.1 crashed with transformers 5.22.2.
+- Fixed (`8280c97`, branch `lead/phase-2-gpu-results`): release-date library pins / lock constraints in the Colab environment, GPU guard (T4 / TPU refused, G4 recommended), tokenizer smoke check, restart cell process match, report marks no-server runs NOT RUN (it had shown empty PASSes).
+- Phase 2 status: every CPU deliverable is in; the open rows are GPU-only (M3-01, M3-02, M3-04, M3-05, M3-13, M4-02, M4-03, M4-19 real check, L-20 recording) and the Docker lock (M4-01, needs a Docker build host; none available now). One G4 run of `notebooks/GPU_CHECK.ipynb` closes the GPU rows.
+
