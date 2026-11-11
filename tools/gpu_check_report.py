@@ -2,6 +2,8 @@
 """Verdicts for a GPU check folder saved by notebooks/GPU_CHECK.ipynb (CPU only, no model).
 
 Usage:  python tools/gpu_check_report.py --runs <downloaded gpu_check/<time> folder> [--json]
+        python tools/gpu_check_report.py --stages <any run result dir> [--answers answers.jsonl]
+        (parse validity, expected_type accuracy and solve rates of one run: M3-04 / M3-05)
 
 Prints one line per acceptance check: PASS, FAIL or NOT RUN, with the measured value. Every value
 is computed from the saved files; nothing is assumed. Writes ``report.json`` into the folder.
@@ -275,9 +277,16 @@ def show(ck: Checks) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    p.add_argument("--runs", type=Path, required=True)
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--runs", type=Path)
+    g.add_argument("--stages", type=Path)
+    p.add_argument("--answers", type=Path)
     p.add_argument("--json", action="store_true")
     args = p.parse_args(argv)
+    if args.stages:
+        print(json.dumps({"parse": parse_stats(args.stages, args.answers), "solve": solve_stats(args.stages),
+                          "reasons": dict(reasons(args.stages).most_common())}, indent=2))
+        return 0
     ck = report(args.runs)
     (args.runs / "report.json").write_text(json.dumps(ck.rows, indent=2, default=str), encoding="utf-8")
     print(json.dumps(ck.rows, indent=2, default=str)) if args.json else show(ck)

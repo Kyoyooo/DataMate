@@ -202,6 +202,9 @@ class EntityConfig(_Section):
         return self
 
 
+CONTEXT_MARGIN_TOKENS = 512  # chat-template tokens and repair error text not counted by the budget
+
+
 class RunConfig(_Section):
     work_dir: str = "/tmp/datamate"
     model: ModelConfig = ModelConfig()
@@ -226,6 +229,14 @@ class RunConfig(_Section):
             raise ValueError("model.enable_thinking needs serving.reasoning_parser (e.g. 'qwen3') so "
                              "reasoning arrives separately from the JSON answer")
         if s.mode == "managed":
+            # Every request must fit the served context: the budgeted prompt, plus (in a repair
+            # turn) the previous answer, plus the new answer. Idea from the M3-03 draft branch.
+            need = (self.solver.context_budget_tokens + self.model.max_tokens.get("solve", 0)
+                    + self.model.max_tokens.get("repair", 0) + CONTEXT_MARGIN_TOKENS)
+            if need > s.max_model_len:
+                raise ValueError(
+                    f"serving.max_model_len = {s.max_model_len} is smaller than solver.context_budget_tokens "
+                    f"+ max_tokens.solve + max_tokens.repair + {CONTEXT_MARGIN_TOKENS} = {need}")
             worst = s.startup_timeout_s * (1 + s.max_restarts)
             if worst >= self.deadlines.global_hard_stop_s:
                 raise ValueError(
