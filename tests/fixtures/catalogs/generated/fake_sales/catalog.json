@@ -1,0 +1,291 @@
+{
+  "business_id": "fake_sales",
+  "bkey": "fake_sales",
+  "db_path": "catalog.duckdb",
+  "tables": [
+    {
+      "name": "orders",
+      "source_file": "synthetic:sales",
+      "row_count": 3,
+      "columns": [
+        {
+          "name": "order_id",
+          "original_name": "order_id",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 3,
+          "min": "O01",
+          "max": "O03",
+          "top_values": [
+            [
+              "O01",
+              1
+            ],
+            [
+              "O02",
+              1
+            ],
+            [
+              "O03",
+              1
+            ]
+          ],
+          "semantic_hint": "code",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "customer_id",
+          "original_name": "customer_id",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "C01",
+          "max": "C02",
+          "top_values": [
+            [
+              "C01",
+              2
+            ],
+            [
+              "C02",
+              1
+            ]
+          ],
+          "semantic_hint": "code",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "date",
+          "original_name": "date",
+          "sql_type": "DATE",
+          "null_count": 0,
+          "distinct_count": 3,
+          "min": "2025-01-01",
+          "max": "2025-01-03",
+          "top_values": [
+            [
+              "2025-01-01",
+              1
+            ],
+            [
+              "2025-01-02",
+              1
+            ],
+            [
+              "2025-01-03",
+              1
+            ]
+          ],
+          "semantic_hint": "date",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "amount",
+          "original_name": "amount",
+          "sql_type": "BIGINT",
+          "null_count": 0,
+          "distinct_count": 3,
+          "min": "50",
+          "max": "200",
+          "top_values": [
+            [
+              "50",
+              1
+            ],
+            [
+              "100",
+              1
+            ],
+            [
+              "200",
+              1
+            ]
+          ],
+          "semantic_hint": "money",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "status",
+          "original_name": "status",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "Hoàn thành",
+          "max": "Đã hủy",
+          "top_values": [
+            [
+              "Hoàn thành",
+              2
+            ],
+            [
+              "Đã hủy",
+              1
+            ]
+          ],
+          "semantic_hint": "status",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        }
+      ],
+      "source_part": null,
+      "candidate_keys": [
+        [
+          "order_id"
+        ],
+        [
+          "date"
+        ],
+        [
+          "amount"
+        ]
+      ],
+      "dropped_rows": {
+        "total_rows": 0,
+        "note_rows": 0,
+        "blank_rows": 0,
+        "summary_rows": 0,
+        "source_indices": {}
+      },
+      "source_details": {}
+    },
+    {
+      "name": "customers",
+      "source_file": "synthetic:sales",
+      "row_count": 2,
+      "columns": [
+        {
+          "name": "customer_id",
+          "original_name": "customer_id",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "C01",
+          "max": "C02",
+          "top_values": [
+            [
+              "C01",
+              1
+            ],
+            [
+              "C02",
+              1
+            ]
+          ],
+          "semantic_hint": "code",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "name",
+          "original_name": "name",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "Anh Tú",
+          "max": "Chị Lan",
+          "top_values": [
+            [
+              "Anh Tú",
+              1
+            ],
+            [
+              "Chị Lan",
+              1
+            ]
+          ],
+          "semantic_hint": "name",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        }
+      ],
+      "source_part": null,
+      "candidate_keys": [
+        [
+          "customer_id"
+        ],
+        [
+          "name"
+        ]
+      ],
+      "dropped_rows": {
+        "total_rows": 0,
+        "note_rows": 0,
+        "blank_rows": 0,
+        "summary_rows": 0,
+        "source_indices": {}
+      },
+      "source_details": {}
+    }
+  ],
+  "data_range": {
+    "start": "2025-01-01",
+    "end": "2025-01-03"
+  },
+  "readme_text": "Synthetic sales catalog. Raw amount and status are separate; no business filtering is implied.",
+  "schema_card": "TABLE orders  (3 rows; source synthetic:sales)\n  order_id VARCHAR candidate_key nulls 0.00% values: \"O01\"(1), \"O02\"(1), \"O03\"(1) code [\"order_id\"]\n  customer_id VARCHAR  nulls 0.00% values: \"C01\"(2), \"C02\"(1) code [\"customer_id\"]\n  date DATE candidate_key nulls 0.00% 2025-01-01..2025-01-03 date [\"date\"]\n  amount BIGINT candidate_key nulls 0.00% 50..200 money [\"amount\"]\n  status VARCHAR  nulls 0.00% values: \"Hoàn thành\"(2), \"Đã hủy\"(1) status [\"status\"]\nTABLE customers  (2 rows; source synthetic:sales)\n  customer_id VARCHAR candidate_key nulls 0.00% values: \"C01\"(1), \"C02\"(1) code [\"customer_id\"]\n  name VARCHAR candidate_key nulls 0.00% values: \"Anh Tú\"(1), \"Chị Lan\"(1) name [\"name\"]\nJOIN orders.customer_id -> customers.customer_id (candidate n:1, 100.0%)\nDATES orders.date 2025-01-01..2025-01-03\n",
+  "schema_card_sha256": "fe2b1eb61dc7fc30400842d35f278617fcf838953102e368f64cece7d0a7324a",
+  "warnings": [],
+  "status": "ready",
+  "joins": [
+    {
+      "left": "orders.customer_id",
+      "right": "customers.customer_id",
+      "cardinality": "n:1",
+      "match_rate": 1.0
+    }
+  ],
+  "date_columns": [
+    {
+      "column": "orders.date",
+      "min": "2025-01-01",
+      "max": "2025-01-03",
+      "included_in_data_range": true,
+      "exclusion_reason": null
+    }
+  ],
+  "setup_ms": 0,
+  "schema_card_budget_verified": false,
+  "schema_card_needs_subset": false,
+  "views": [],
+  "compile_calls": [],
+  "semantic_annotations": null
+}

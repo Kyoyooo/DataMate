@@ -1,0 +1,7 @@
+# Ambiguous whole tokens. These are hints, never automatic substitutions.
+# token<TAB>candidate interpretations<TAB>reason
+th	tháng|thứ|unchanged entity name	TH may be a brand
+ck	chiết khấu|chuyển khoản	Meaning depends on the field and rulebook
+k	không|nghìn|unchanged code	Quantity scales and negation must not be confused
+tm	tiền mặt|unchanged code	Confirm payment vocabulary in the mounted data
+hd	hóa đơn|unchanged medicine name	HD occurs in medicine names

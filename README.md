@@ -2,7 +2,7 @@
 
 An offline agent that answers Vietnamese questions over business CSV/Excel/SQLite data, or reports `unanswerable` / `abstain`. Competition requirements: [`docs/COMPETITION_BRIEF.md`](docs/COMPETITION_BRIEF.md). Technical design: [`docs/SPEC.md`](docs/SPEC.md) (see §18 for what the current code implements and defers). Backlog: [`docs/TASKS.md`](docs/TASKS.md). Workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-> **Status (2026-11-09): bootstrap plus M3-02 HTTP client.** The fixture pipeline has a scripted development path and a loopback HTTP client for an externally started vLLM server. Excel/SQLite ingestion, replica management and Docker are still pending. Fixture results are plumbing checks, not competition accuracy. A real Colab call remains an acceptance check in `notebooks/M3_02_HTTP_CLIENT_CHECK.ipynb`.
+> **M1 update (2026-11-11): ingestion and catalog integration.** CSV/Excel/SQLite ingestion, Vietnamese formats and bounded prompt schemas are implemented on the current main baseline, preserving shared contracts 1.10.0. See the [M1 handoff](docs/M1_IMPLEMENTATION.md) for evidence and remaining model-dependent checks. Fixture results are plumbing checks, not competition accuracy.
 
 ## Setup (CPU, no GPU, no model weights, no network at run time)
 
@@ -60,7 +60,7 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 |---|---|---|---|
 | `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.5.0 (P1 freeze; additive M2 resolver, calendar and profile extensions; M3-02 optional transport evidence, SPEC §18.5; runtime reason codes, §18.6) |
 | `eval/` | Lead | Scorer (`python -m datamate.eval.score`); harness later | scorer |
-| `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | fixture CSV only (UTF-8, ISO dates, plain numbers) |
+| `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | CSV/Excel/SQLite ingestion, Vietnamese formats, profiling and bounded prompt schemas; [M1 handoff](docs/M1_IMPLEMENTATION.md) |
 | `rules/`, `temporal/`, `decision/`, `formatting/` | M2 | Rulebook, time windows, gate, wire values | calendar validation; generic CLI time params with an opt-in CPU-tested extraction boundary ([M2 handoff](docs/M2_RULEBOOK_CALENDAR.md)) |
 | `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | HTTP + dev scripted clients; in-process executor |
 | `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | concurrent orchestrator, replica manager (CPU-tested); no image yet |
@@ -74,6 +74,12 @@ One JSON file; unknown keys are errors; missing keys take defaults from `src/dat
 | Key | Default | Meaning |
 |---|---|---|
 | `work_dir` | `/tmp/datamate` | Scratch for per-business DuckDB files (never under the data dir) |
+| `ingest.numeric_accept_rate` / `date_accept_rate` | 0.98 / 0.98 | Minimum accepted parse fraction for a typed column |
+| `ingest.max_header_scan_rows` / `max_file_mb` | 20 / 2048 | Header search and per-file ingestion limits |
+| `ingest.low_cardinality_max` / `top_values_max` | 50 / 30 | Profiling vocabulary and example limits |
+| `solver.schema_card_budget_tokens` | 8000 | Enforced with the same tokenizer as the complete prompt; full audit metadata stays on disk |
+| `entities.top_k` / `weak_threshold` / `strong_threshold` / `max_distinct_values` | 5 / 70 / 85 / 100000 | Standalone experimental entity-index configuration |
+| `features.entity_linker` / `compiled_views` / `compiled_views_categories` | false / false / null | Reserved experimental M1 API settings; not activated by the main runner; real-model gates remain deferred |
 | `model.backend` | `http` | `scripted` (dev only) or synchronous loopback `http` |
 | `model.base_url` | `null` | Required for HTTP; e.g. `http://127.0.0.1:8000/v1`; loopback only, no credentials/proxies/redirects |
 | `model.served_model_name` | `datamate` | Must match vLLM's served model name |

@@ -1,90 +1,77 @@
-"""Minimal CSV reader for the development fixture. Owner: M1.
+"""CSV compatibility API backed by the same policies as full runtime ingestion.
 
-SCOPE (bootstrap): UTF-8 (BOM tolerated), delimiter sniffed among , ; TAB |,
-header in the first row, every cell returned as a string. Typing is limited to
-plain integers, plain decimals with '.', and ISO dates (``infer_column_type``).
-
-NOT YET IMPLEMENTED (TASKS M1-03, M1-06, M1-07): encoding detection, VN/EN
-thousands separators ("1.250.000", "560,000"), magnitude suffixes ("150k",
-"1tr2"), non-ISO dates ("1 thg 6 2025", "dd/mm/yyyy"), raw-column preservation.
-Real training files use those formats, so this reader is not production-ready.
+For column-level parsing, prefer infer_data_column(): it returns the inferred
+SQL type, original-value status, chosen convention and all parsed values.
 """
 
 from __future__ import annotations
 
-import csv
-import re
-from datetime import date
-from decimal import Decimal, InvalidOperation
+from datetime import datetime, time
 from pathlib import Path
 
+from datamate.ingest.common import read_delimited
+from datamate.ingest.engine import (
+    DataConfig,
+    infer_data_column,
+    numeric_convention,
+    parse_date_value,
+    parse_numeric,
+)
 from datamate.lexicon import nfc
 
-NULL_TOKENS = {"", "na", "n/a", "null", "none", "nan"}
-_INT = re.compile(r"^[+-]?\d+$")
-_DEC = re.compile(r"^[+-]?\d+\.\d+$")
-_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+NULL_TOKENS = {"", "na", "n/a", "null", "none", "nan", "-", "--", "\u2014"}
 
 
 def read_csv(path: Path) -> tuple[list[str], list[list[str]]]:
-    """Return (header, rows). All values are NFC strings; short rows are padded."""
-    text = path.read_bytes().decode("utf-8-sig")
-    sample = text[:65536]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
-        delimiter = dialect.delimiter
-    except csv.Error:
-        delimiter = ","
-    reader = csv.reader(text.splitlines(), delimiter=delimiter, quotechar='"')
-    rows = [[nfc(c) for c in r] for r in reader if any(c.strip() for c in r)]
+    """Return raw NFC strings without truncating over-wide source records."""
+    rows, _ = read_delimited(path)
+    rows = [[nfc(str(v)) for v in row] for row in rows if any(str(v).strip() for v in row)]
     if not rows:
         return [], []
-    header, body = rows[0], rows[1:]
-    width = len(header)
-    body = [(r + [""] * width)[:width] for r in body]
-    return header, body
+    width = max(map(len, rows))
+    header = rows[0] + [f"column_{i + 1}" for i in range(len(rows[0]), width)]
+    return header, [row + [""] * (width - len(row)) for row in rows[1:]]
 
 
 def is_null(value: str) -> bool:
-    return value.strip().lower() in NULL_TOKENS
+    return value.strip().casefold() in NULL_TOKENS
 
 
-def infer_column_type(values: list[str]) -> str:
-    """BIGINT if all non-null values are integers, DECIMAL(38,6) if plain decimals,
-    DATE if ISO dates, else VARCHAR. An all-null column is VARCHAR."""
-    present = [v.strip() for v in values if not is_null(v)]
-    if not present:
-        return "VARCHAR"
-    if all(_INT.match(v) for v in present):
-        if all(-(2**63) <= int(v) < 2**63 for v in present):
-            return "BIGINT"
-        return "DECIMAL(38,6)"
-    if all(_INT.match(v) or _DEC.match(v) for v in present):
-        if all(len(v.split(".")[1]) <= 6 for v in present if "." in v):
-            return "DECIMAL(38,6)"
-        return "VARCHAR"
-    if all(_ISO_DATE.match(v) for v in present):
-        try:
-            for v in present:
-                date.fromisoformat(v)
-            return "DATE"
-        except ValueError:
-            return "VARCHAR"
-    return "VARCHAR"
+def infer_column_type(values: list[str], header: str = "") -> str:
+    return infer_data_column(header, values, DataConfig())["sql_type"]
 
 
-def convert(value: str, sql_type: str) -> object:
-    """Convert one cell to a Python value for ``sql_type``; nulls become None."""
+def convert(
+    value: str, sql_type: str, *, convention: str | None = None, date_order: str = "DMY"
+) -> object:
+    """Convert with an explicit column convention when a scalar is ambiguous."""
     if is_null(value):
         return None
-    v = value.strip()
-    if sql_type == "BIGINT":
-        return int(v)
-    if sql_type.startswith("DECIMAL"):
-        try:
-            return Decimal(v)
-        except InvalidOperation as exc:  # pragma: no cover - guarded by infer_column_type
-            raise ValueError(f"not a decimal: {value!r}") from exc
-    if sql_type == "DATE":
-        return date.fromisoformat(v)
-    return value  # VARCHAR: keep exactly as found (NFC), including surrounding spaces
+    if sql_type == "VARCHAR":
+        return nfc(value)
+    if sql_type in {"BIGINT", "DOUBLE"} or sql_type.startswith("DECIMAL"):
+        policy = convention or numeric_convention([value])[0]
+        if policy is None:
+            raise ValueError("W_NUMERIC_AMBIGUOUS: supply the inferred column convention")
+        parsed, status = parse_numeric(value, policy)
+        if status != "parsed":
+            raise ValueError(status)
+        if sql_type == "BIGINT":
+            if parsed != parsed.to_integral_value() or not -(2**63) <= parsed < 2**63:
+                raise ValueError("Value does not fit BIGINT")
+            return int(parsed)
+        return float(parsed) if sql_type == "DOUBLE" else parsed
+    if sql_type in {"DATE", "TIMESTAMP"}:
+        parsed, status = parse_date_value(value, date_order)
+        if parsed is None:
+            raise ValueError(status)
+        if sql_type == "TIMESTAMP" and not isinstance(parsed, datetime):
+            return datetime.combine(parsed, time())
+        if sql_type == "DATE" and isinstance(parsed, datetime):
+            if parsed.time() != time():
+                raise ValueError("Non-midnight timestamp cannot be truncated to DATE")
+            return parsed.date()
+        return parsed
+    if sql_type == "BOOLEAN" and value.casefold() in {"true", "false", "0", "1"}:
+        return value.casefold() in {"true", "1"}
+    raise ValueError(f"Unsupported conversion to {sql_type}")

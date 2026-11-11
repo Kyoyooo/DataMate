@@ -1,0 +1,8 @@
+{
+  "readme": "Synthetic catalog with exact decimals, leading-zero codes and explicit stock units.",
+  "tables": [
+    {"name": "products", "columns": [["code", "VARCHAR", "code"], ["name", "VARCHAR", "name"], ["price", "DECIMAL(38,6)", "money"], ["active", "BOOLEAN", "status"]], "rows": [["001", "Cà phê sữa", "12.50", true], ["002", "Trà đào", "15.25", false]]},
+    {"name": "stock", "columns": [["code", "VARCHAR", "code"], ["quantity", "BIGINT", "quantity"], ["unit", "VARCHAR", null]], "rows": [["001", 2, "hộp"], ["002", 5, "chai"]]}
+  ],
+  "joins": [{"left": "stock.code", "right": "products.code", "cardinality": "1:1", "match_rate": 1.0}]
+}

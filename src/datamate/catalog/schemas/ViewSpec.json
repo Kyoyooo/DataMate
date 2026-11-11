@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "ViewCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "passed"
+      ],
+      "title": "ViewCheck",
+      "type": "object"
+    },
+    "ViewValidation": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ViewCheck"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "executed": {
+          "default": false,
+          "title": "Executed",
+          "type": "boolean"
+        },
+        "row_count": {
+          "default": 0,
+          "title": "Row Count",
+          "type": "integer"
+        }
+      },
+      "title": "ViewValidation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "default": "other",
+      "title": "Category",
+      "type": "string"
+    },
+    "ddl": {
+      "title": "Ddl",
+      "type": "string"
+    },
+    "depends_on": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Depends On",
+      "type": "array"
+    },
+    "enabled": {
+      "default": false,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "exclusion_check": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exclusion Check"
+    },
+    "key_columns": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Key Columns",
+      "type": "array"
+    },
+    "name": {
+      "pattern": "^v_[a-z][a-z0-9_]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "purpose": {
+      "title": "Purpose",
+      "type": "string"
+    },
+    "validation": {
+      "$ref": "#/$defs/ViewValidation",
+      "default": {
+        "checks": [],
+        "executed": false,
+        "row_count": 0
+      }
+    }
+  },
+  "required": [
+    "name",
+    "purpose",
+    "ddl"
+  ],
+  "title": "ViewSpec",
+  "type": "object"
+}
