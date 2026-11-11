@@ -191,16 +191,30 @@ def score_files(pred_path: Path, answers_path: Path) -> dict[str, Any]:
     }
 
 
+def by_reason(per_id: dict[str, int], logs_path: Path) -> dict[str, dict[str, int]]:
+    """Scores grouped by the decision reason code in a run's ``logs/questions.jsonl``."""
+    reason = {r["id"]: (r.get("decision") or {}).get("reason_code", "") for r in _read_jsonl(logs_path)}
+    out: dict[str, Counter[int]] = {}
+    for qid, s in per_id.items():
+        out.setdefault(reason.get(qid, "(no log)"), Counter())[s] += 1
+    return {k: {"correct": c[1], "wrong": c[-1], "abstain": c[0]} for k, c in sorted(out.items())}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m datamate.eval.score")
     ap.add_argument("--pred", type=Path, required=True)
     ap.add_argument("--answers", type=Path, required=True)
+    ap.add_argument("--logs", type=Path, help="questions.jsonl of the run: adds a per-reason-code report")
     args = ap.parse_args(argv)
     res = score_files(args.pred, args.answers)
     print(f"PA = {res['pa']:.4f}  (n={res['n']}, correct={res['correct']}, "
           f"wrong={res['wrong']}, abstain={res['abstain']})")
     for t, c in res["by_type"].items():
         print(f"  {t:13s} correct={c['correct']:4d} wrong={c['wrong']:4d} abstain={c['abstain']:4d}")
+    if args.logs:
+        print("by reason code:")
+        for r, c in by_reason(res["per_id"], args.logs).items():
+            print(f"  {r:32s} correct={c['correct']:4d} wrong={c['wrong']:4d} abstain={c['abstain']:4d}")
     return 0
 
 

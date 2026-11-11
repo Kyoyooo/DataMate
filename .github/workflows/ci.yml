@@ -20,7 +20,7 @@ jobs:
           pip install -r requirements-cpu.lock
           pip install -e . --no-deps
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests tools training_code
       - name: Tests
         run: python -m pytest
       - name: Fixture pipeline (development path, scripted model)
