@@ -62,19 +62,27 @@ def test_notebook_is_generated_clean_and_valid_python():
 
 # ---------------------------------------------------------------- pinned vLLM environment
 
-GOOD = {"python": "3.12.11", "vllm": "0.10.1.1", "torch": "2.7.1+cu128", "cuda": "12.8",
+GOOD = {"python": "3.12.11", "vllm": "0.10.1.1", "torch": "2.7.1+cu128", "cuda": "12.8", "transformers": "4.55.2",
         "arch_list": ["sm_90", "sm_100", "sm_120"], "cuda_available": True, "capability": "12.0"}
 
 
-def test_env_commands_pin_python_vllm_and_cuda_128(tmp_path):
-    cmds = helpers.vllm_env_commands("0.10.1.1", tmp_path / "proj", tmp_path / "venv", create=True,
-                                     host_python="/usr/bin/python3")
-    flat = [" ".join(c) for c in cmds]
-    assert flat[0] == "/usr/bin/python3 -m pip install -q uv"
-    assert flat[1] == f"/usr/bin/python3 -m uv venv --python 3.12 {tmp_path / 'venv'}"
-    assert "--torch-backend=cu128 vllm==0.10.1.1 -r" in flat[2] and flat[2].endswith("requirements.in")
-    assert flat[3].endswith(f"--no-deps -e {tmp_path / 'proj'}")
-    assert len(helpers.vllm_env_commands("0.10.1.1", tmp_path, tmp_path / "v", create=False)) == 3
+def test_env_commands_pin_python_vllm_cuda_128_and_contemporary_libraries(tmp_path):
+    proj, venv = tmp_path / "proj", tmp_path / "venv"
+    proj.mkdir()
+    cmds = helpers.vllm_env_commands("0.10.1.1", proj, venv, create=True, host_python="/usr/bin/python3")
+    assert list(cmds) == ["uv", "venv", "base", "freeze", "project_requirements", "project"]
+    flat = {k: " ".join(v) for k, v in cmds.items()}
+    assert flat["venv"] == f"/usr/bin/python3 -m uv venv --python 3.12 {venv}"
+    # transformers 5 broke vLLM 0.10.1.1 on Colab: the base uses the libraries of its release date
+    assert "--torch-backend=cu128 vllm==0.10.1.1 transformers==4.55.2 tokenizers==0.21.4 huggingface-hub==0.34.4" in flat["base"]
+    assert "--exclude-editable" in flat["freeze"]
+    assert f"-c {venv / 'base-constraints.txt'} -r {proj / 'requirements.in'}" in flat["project_requirements"]
+    assert flat["project"].endswith(f"--no-deps -e {proj}")
+    assert "venv" not in helpers.vllm_env_commands("0.10.1.1", proj, venv, create=False)
+    # once the image lock exists, it replaces the date-based pins
+    (proj / "requirements.lock").write_text("transformers==4.55.4\n")
+    base = " ".join(helpers.vllm_env_commands("0.10.1.1", proj, venv, create=False)["base"])
+    assert base.endswith(f"vllm==0.10.1.1 -c {proj / 'requirements.lock'}") and "4.55.2" not in base
 
 
 def test_env_check_catches_wrong_version_python_and_missing_blackwell_kernels():
@@ -102,6 +110,8 @@ class FakeRun:
         if "venv" in cmd:
             (self.venv / "bin").mkdir(parents=True)
             (self.venv / "bin" / "python").write_text("")
+        if "freeze" in cmd:
+            return types.SimpleNamespace(returncode=0, stdout="vllm==0.10.1.1\ntransformers==4.55.2\n", stderr="")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
 
@@ -111,6 +121,7 @@ def test_ensure_builds_once_then_only_refreshes_the_project(tmp_path):
     py, info = helpers.ensure_vllm_env("0.10.1.1", tmp_path / "proj", venv, run=run)
     assert py == str(venv / "bin" / "python") and info == GOOD
     assert any("vllm==0.10.1.1" in c for cmd in run.calls for c in cmd)
+    assert (venv / "base-constraints.txt").read_text() == "vllm==0.10.1.1\ntransformers==4.55.2\n"
     run.calls.clear()
     helpers.ensure_vllm_env("0.10.1.1", tmp_path / "proj", venv, run=run)
     installs = [cmd for cmd in run.calls if "install" in cmd]

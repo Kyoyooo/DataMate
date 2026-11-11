@@ -71,6 +71,10 @@ gpu_name, gpu_mem, cap = [x.strip() for x in sh("nvidia-smi --query-gpu=name,mem
 TOTAL_GIB = float(gpu_mem.split()[0]) / 1024
 (OUT / "env" / "nvidia-smi.txt").write_text(sh("nvidia-smi", tail=0))
 print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(NOT the competition GPU type: speed/memory are indicative only)")
+# bf16 needs compute capability >= 8.0; an 8 B model in bf16 needs about 16 GB of weights plus KV cache.
+assert float(cap) >= 8.0 and TOTAL_GIB >= 22, (
+    f"{gpu_name} ({TOTAL_GIB:.0f} GB, cc {cap}) cannot serve the model: Runtime -> Change runtime type -> G4 "
+    "(Blackwell, like the RTX 5090; A100/H100/L4 also work but are not the target architecture)")
 ''')
 
 add("code", '''
@@ -111,6 +115,10 @@ if not MODEL.exists():
         from huggingface_hub import snapshot_download
         snapshot_download(MODEL_REPO, local_dir=str(MODEL)); shutil.copytree(MODEL, SAVED)
 (OUT / "env" / "count_params.json").write_text(sh(f"{PY} /content/DataMate/tools/count_params.py {MODEL} --json", tail=400))
+# vLLM must be able to load this model's tokenizer (seconds; fails fast on a library mismatch)
+tok = subprocess.run([PY, "-c", "import sys; from vllm.transformers_utils.tokenizer import get_tokenizer; print(type(get_tokenizer(sys.argv[1])).__name__)", str(MODEL)], capture_output=True, text=True)
+assert tok.returncode == 0, "vLLM cannot load the tokenizer (library mismatch?):\\n" + tok.stderr[-1500:]
+print("tokenizer:", tok.stdout.strip())
 mark("data and model ready")
 ''')
 
@@ -181,9 +189,10 @@ if RESTART_CHECK:
     while proc.poll() is None:
         done = rout / "logs" / "questions.jsonl"
         if killed is None and done.is_file() and len(done.read_text().splitlines()) >= 3:
-            pids = subprocess.run(["pgrep", "-f", "vllm.entrypoints.openai.api_server"], capture_output=True, text=True).stdout.split()
+            # only the server: its argv STARTS with "<python> -m vllm.entrypoints..." (datamate.run merely mentions it in --set)
+            pids = subprocess.run(["pgrep", "-f", "^[^ ]+ -m vllm[.]entrypoints[.]openai[.]api_server"], capture_output=True, text=True).stdout.split()
             if pids:
-                os.killpg(int(pids[0]), signal.SIGKILL); killed = round(time.time() - t_start, 1); print("killed model server at", killed, "s")
+                os.killpg(os.getpgid(int(pids[0])), signal.SIGKILL); killed = round(time.time() - t_start, 1); print("killed model server at", killed, "s")
         time.sleep(2)
     log = proc.stdout.read(); (rout / "stderr.txt").write_text(log)
     STATUS["restart"] = {"exit": proc.returncode, "seconds": round(time.time() - t_start, 1), "killed_at_s": killed}
