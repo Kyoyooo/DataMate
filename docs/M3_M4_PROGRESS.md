@@ -33,7 +33,7 @@ The original `m3/M3-02-http-client` and `m1/M1-14-implementation-handoff` were n
 2. Package the full 186 MB training split under `training_code/data/train/` (what `tools/build_image.sh` does) or only derived data?
 3. Is the in-flight loss on replica crash acceptable (questions running on a replica at the moment it dies abstain; queued ones move to the other replica)? Re-queueing in-flight questions is possible but not built.
 4. `solver.template_version` stays `v1`, `python_fallback` false and no few-shot bank until a held-out run exists. Agree?
-5. How should M1's branch (new `answer_question` signature, `select_schema_context`) be sequenced against this stack?
+5. ~~How should M1's branch be sequenced against this stack?~~ Resolved 2026-11-11: M1 rebuilt its work on top of this stack (`m1/M1-14-main-compatibility`, merged); `runtime/pipeline.py` and `answer_question` were left unchanged, and the SchemaCard selector is wired through the M3-03 `ContextBuilder` hooks (SPEC §18.14).
 
 ## 2026-11-11
 

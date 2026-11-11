@@ -2,7 +2,7 @@
 
 An offline agent that answers Vietnamese questions over business CSV/Excel/SQLite data, or reports `unanswerable` / `abstain`. Competition requirements: [`docs/COMPETITION_BRIEF.md`](docs/COMPETITION_BRIEF.md). Technical design: [`docs/SPEC.md`](docs/SPEC.md) (see §18 for what the current code implements and defers). Backlog: [`docs/TASKS.md`](docs/TASKS.md). Workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-> **M1 update (2026-11-11): ingestion and catalog integration.** CSV/Excel/SQLite ingestion, Vietnamese formats and bounded prompt schemas are implemented on the current main baseline, preserving shared contracts 1.10.0. See the [M1 handoff](docs/M1_IMPLEMENTATION.md) for evidence and remaining model-dependent checks. Fixture results are plumbing checks, not competition accuracy.
+> **Status (2026-11-11): CPU pipeline complete; no real-model run yet.** Real CSV/Excel/SQLite ingestion ([M1 handoff](docs/M1_IMPLEMENTATION.md)), rulebook/temporal/decision/formatting (M2), loopback HTTP client, prompts, budgeting, process sandbox and replay (M3), replica manager, concurrent orchestrator, run records, `Dockerfile`/`predict.sh` and prechecks (M4) are merged and CPU-tested. Not yet done: model choice (DEC-3), `requirements.lock`, an image built on the reference base, any run on a GPU. Progress: [`docs/M3_M4_PROGRESS.md`](docs/M3_M4_PROGRESS.md). Fixture results are plumbing checks, not competition accuracy.
 
 ## Setup (CPU, no GPU, no model weights, no network at run time)
 
@@ -18,7 +18,7 @@ python3 -m venv .venv
 .venv/bin/pip install -e . --no-deps
 ```
 
-GPU/serving dependencies (vLLM, torch, transformers) are **not** installed here; they come from the Docker base image (TASKS M4-01).
+After pulling new commits, re-run the two install commands: `requirements-cpu.lock` gained the M1 ingestion libraries (pyarrow, python-calamine, openpyxl, charset-normalizer, rapidfuzz) on 2026-11-11. GPU/serving dependencies (vLLM, torch, transformers) are **not** installed here; they come from the Docker base image (TASKS M4-01).
 
 ## Run the development pipeline on the fixture
 
@@ -58,14 +58,14 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 
 | Package | Owner | Role | Bootstrap state |
 |---|---|---|---|
-| `contracts/` | Lead | Shared types, reason codes, exact JSON | 1.5.0 (P1 freeze; additive M2 resolver, calendar and profile extensions; M3-02 optional transport evidence, SPEC §18.5; runtime reason codes, §18.6) |
+| `contracts/` | Lead | Shared types, reason codes, exact JSON 1.10.0 (P1 freeze, then additive minors only: SPEC §18.4–§18.14) |
 | `eval/` | Lead | Scorer (`python -m datamate.eval.score`); harness later | scorer |
 | `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | CSV/Excel/SQLite ingestion, Vietnamese formats, profiling and bounded prompt schemas; [M1 handoff](docs/M1_IMPLEMENTATION.md) |
 | `rules/`, `temporal/`, `decision/`, `formatting/` | M2 | Rulebook, time windows, gate, wire values | calendar validation; generic CLI time params with an opt-in CPU-tested extraction boundary ([M2 handoff](docs/M2_RULEBOOK_CALENDAR.md)) |
-| `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | HTTP + dev scripted clients; in-process executor |
-| `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | concurrent orchestrator, replica manager (CPU-tested); no image yet |
+| `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | HTTP, replay and dev scripted clients; budgeting; killable process sandbox pool |
+| `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | concurrent orchestrator, replica manager, Dockerfile/`predict.sh` (CPU-tested; no image on the reference base yet) |
 
-Planned packages, created only when their task starts: `entities/` (M1-12, P2), `semantics/` (M1-13, P2), `llm/replay.py` (M3-13), `eval/harness.py` (L-12), `tools/` (M4-13/M4-14), `training_code/` (M4-13), `Dockerfile` and `predict.sh` (M4-09).
+Experimental M1 packages, default off: `entities/` (M1-12, P2), `semantics/` (M1-13, P2). Still planned: `eval/harness.py` (L-12).
 
 ## Configuration
 
