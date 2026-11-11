@@ -147,7 +147,7 @@ def test_notebook_is_generated_gpu_only_and_valid_python():
     assert all(c.get("outputs", []) == [] for c in nb["cells"] if c["cell_type"] == "code")
     code = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
     ast.parse(code)
-    for needle in ("import vllm", "train.zip", "snapshot_download", "VLLM_BATCH_INVARIANT", "enable_prefix_caching",
+    for needle in ("ensure_vllm_env", "vllm_command", "train.zip", "snapshot_download", "VLLM_BATCH_INVARIANT", "enable_prefix_caching",
                    "max_num_seqs", "structured_outputs", "meta.json", "bakeoff_report.py"):
         assert needle in code, needle
     # CPU-only work (analysis, licence checks, parameter counts, scoring) is not done on the GPU runtime

@@ -3,7 +3,7 @@
 One Colab session collects every acceptance check that needs the model or a GPU. The notebook only produces raw files; the verdicts are computed on your own computer. Nothing here chooses the model (DEC-3).
 
 ## Before the session
-- Main contains the commit you want to check (the notebook clones `main` and records the commit).
+- The code to check is on GitHub: `main`, or a pushed branch named in the notebook's `BRANCH` setting (the notebook clones it and records the commit).
 - `MyDrive/DataMate/train.zip` exists (the training split). The model is downloaded once and kept under `MyDrive/DataMate/models/`.
 - Colab runtime: a Blackwell GPU (compute capability 12.0) if available. On another GPU the results are indicative only, and the report says so.
 
@@ -18,6 +18,8 @@ Open `notebooks/GPU_CHECK.ipynb`, edit the first cell if needed (`MODEL_REPO`, `
 | `runs/restart/` | model server killed after 3 answers | M4-03 |
 | `context_check.json`, `context_check.log` | real tokenizer, all 3,000 training questions (CPU, background) | M3-03, M1-10 |
 | `env/count_params.json`, `env/nvidia-smi.txt`, `env/pip-freeze.txt`, `meta.json` | environment | 15 B limit, records |
+
+The vLLM step builds a separate **Python 3.12** environment (`/content/py312`, with `uv`): Colab's own Python is 3.13, and vLLM 0.10.1.1 only supports Python < 3.13 (its wheels declare `Requires-Python <3.13`). Torch comes from the CUDA 12.8 index (`--torch-backend=cu128`), like the base image's torch 2.7.1+cu128; Blackwell GPUs need CUDA 12.8 builds. Every datamate run, tool and vLLM server in the notebook uses that interpreter (`serving.vllm_command`). The first build takes a few minutes; `env/python-env.json` records the Python, vLLM, torch and CUDA versions and whether torch has `sm_120` kernels. The cell stops with the resolver output if anything does not match.
 
 If a cell fails, fix the cause and **Run all** again: every step overwrites its own run folder.
 
