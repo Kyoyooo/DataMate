@@ -103,7 +103,7 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
         executor: SqlExecutor | None = None, fewshot_bank: FewshotBank | None = None,
         python_executor: SqlExecutor | None = None,
         serving_record: Callable[[], dict[str, Any]] | None = None,
-        started_at: float | None = None) -> int:
+        started_at: float | None = None, stop_requested: bool = False) -> int:
     """Run the whole split. ``client`` is one client per replica (a single client = one replica).
 
     An empty client list means the model servers could not be started: every question is
@@ -138,6 +138,8 @@ def run(cfg: RunConfig, client: ModelClient | Sequence[ModelClient], data_dir: P
                             context=context, executor=executor, fewshot_bank=fewshot_bank,
                             python_executor=python_executor)
         previous = _install_sigterm(orch.request_stop)
+        if stop_requested:  # SIGTERM arrived before the questions started (M4-11)
+            orch.request_stop()
         try:
             stats = orch.run()
         finally:
@@ -214,6 +216,32 @@ def _context_builder(cfg: RunConfig) -> ContextBuilder:
     return build_context(tok, cfg)
 
 
+class _Terminated(BaseException):
+    """SIGTERM during startup (sandbox pool, model servers): unwind, then write all ids."""
+
+
+class _StartupSigterm:
+    """SIGTERM handler for main(): before the questions start, a signal unwinds the startup
+    (replicas are stopped by ReplicaManager.start) and run() then abstains every id, so a
+    terminated run still leaves a complete submission. After startup it only records the
+    signal; run() installs the orchestrator's own handler."""
+
+    def __init__(self) -> None:
+        self.startup, self.received = True, False
+        try:
+            self.previous = signal.signal(signal.SIGTERM, self)
+        except ValueError:  # not the main thread (tests)
+            self.previous = None
+
+    def __call__(self, *_: Any) -> None:
+        self.received = True
+        if self.startup:
+            raise _Terminated()
+
+    def restore(self) -> None:
+        _restore_sigterm(self.previous)
+
+
 def _install_sigterm(handler: Callable[[], None]) -> Any:
     try:
         return signal.signal(signal.SIGTERM, lambda *_: handler())
@@ -257,33 +285,50 @@ def main(argv: list[str] | None = None) -> int:
     except (ProductionGuardError, NotImplementedError, ValidationError, ValueError, OSError) as exc:
         print(f"error: refusing to run: {exc}", file=sys.stderr)
         return 2
-    pool = (SandboxPool(cfg.exec_limits.workers, cfg.exec_limits)
-            if cfg.exec_limits.isolation == "process" else None)
-    executor = pool.run_sql if pool else None
-    py_executor = pool.run_python if pool else None
+    term = _StartupSigterm()
+    pool = None
     try:
+        try:
+            pool = (SandboxPool(cfg.exec_limits.workers, cfg.exec_limits)
+                    if cfg.exec_limits.isolation == "process" else None)
+        except _Terminated:
+            pool = None
+        executor = pool.run_sql if pool else None
+        py_executor = pool.run_python if pool else None
         if not managed:
+            term.startup = False
             return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
                        overrides=args.overrides, context=context, executor=executor,
-                       fewshot_bank=bank, python_executor=py_executor, started_at=started_at)
+                       fewshot_bank=bank, python_executor=py_executor, started_at=started_at,
+                       stop_requested=term.received)
         from datamate.llm.replicas import ReplicaError, ReplicaManager
 
         manager = ReplicaManager(cfg, args.result_dir / "logs")
         try:
             try:
-                manager.start()
-                clients = [make_client(c, dev=args.dev) for c in manager.client_configs()]
+                if not term.received:
+                    manager.start()
+                    clients = [make_client(c, dev=args.dev) for c in manager.client_configs()]
+                else:
+                    clients = []
             except ReplicaError as exc:
                 # Serving failed at run time: still deliver a complete (all-abstain) submission.
                 print(f"error: model servers unavailable: {exc}", file=sys.stderr)
                 clients = []
+            except _Terminated:
+                print("error: SIGTERM during model server startup", file=sys.stderr)
+                clients = []
+            term.startup = False
             return run(cfg, clients, args.data_dir, args.result_dir, dev=args.dev,
                        overrides=args.overrides, supervisor=manager if clients else None,
                        serving_record=manager.record, context=context, executor=executor,
-                       fewshot_bank=bank, python_executor=py_executor, started_at=started_at)
+                       fewshot_bank=bank, python_executor=py_executor, started_at=started_at,
+                       stop_requested=term.received)
         finally:
+            term.startup = False
             manager.stop()
     finally:
+        term.restore()
         if pool is not None:
             pool.close()
 

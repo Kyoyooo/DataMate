@@ -11,6 +11,7 @@ test stays identical to production:
                         it creates the marker, so a restart starts normally
   FAKE_VLLM_FAIL_GPUS   comma-separated CUDA_VISIBLE_DEVICES values whose launch always fails
                         (exit 4): one broken GPU among healthy ones
+  FAKE_VLLM_REPLY_DELAY_S seconds to wait before answering a completion (a slow model)
 """
 
 from __future__ import annotations
@@ -60,6 +61,7 @@ def main(argv: list[str]) -> int:
 
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            time.sleep(float(os.environ.get("FAKE_VLLM_REPLY_DELAY_S", "0")))
             text = f"pong:{body['max_tokens']}"
             data = json.dumps({"choices": [{"message": {"content": text}, "finish_reason": "stop"}]}
                               ).encode()
