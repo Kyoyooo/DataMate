@@ -82,3 +82,18 @@ def test_frozen_config_is_managed_two_replica_serving_without_scripted_parts():
     assert cfg.model.backend == "http" and cfg.model.path.startswith("/code/models/")
     assert cfg.model.script_path is None and cfg.model.replay_path is None
     assert cfg.model.record_path is None and cfg.model.base_url is None
+
+
+def test_requirements_in_uses_the_pyproject_ranges_never_exact_pins():
+    import pytest
+
+    tomllib = pytest.importorskip("tomllib")  # Python 3.11+
+    deps = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["dependencies"]
+    want = {d.split(">")[0].split("<")[0].split("=")[0].strip(): d.replace(" ", "") for d in deps}
+    want.pop("pydantic")  # shipped by the base image (SPEC §4.4)
+    lines = [x.split("#")[0].strip() for x in (REPO / "requirements.in").read_text().splitlines()]
+    got = {}
+    for line in filter(None, lines):
+        assert "==" not in line, f"exact pin in requirements.in: {line}"
+        got[line.split(">")[0].split("<")[0].strip()] = line.replace(" ", "")
+    assert got == want

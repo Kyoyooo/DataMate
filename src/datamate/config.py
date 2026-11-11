@@ -218,10 +218,13 @@ class RunConfig(_Section):
     features: FeatureConfig = FeatureConfig()
 
     @model_validator(mode="after")
-    def _startup_fits_global_stop(self):
+    def _serving_consistency(self):
         # The global stop counts from process start (model loading counts toward the 6 hours).
         # Worst-case managed startup: every replica times out once and once more per restart.
         s = self.serving
+        if s.mode == "managed" and any(self.model.enable_thinking.values()) and not s.reasoning_parser:
+            raise ValueError("model.enable_thinking needs serving.reasoning_parser (e.g. 'qwen3') so "
+                             "reasoning arrives separately from the JSON answer")
         if s.mode == "managed":
             worst = s.startup_timeout_s * (1 + s.max_restarts)
             if worst >= self.deadlines.global_hard_stop_s:

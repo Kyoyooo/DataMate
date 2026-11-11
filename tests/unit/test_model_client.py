@@ -319,3 +319,29 @@ def test_http_parser_still_uses_original_pydantic_validation(http_server, split,
     frame, result, error = parse_question(question("Bao nhiêu?"), split, catalog,
                                           client_for(http_server), cfg)
     assert result.error is None and frame is None and error == codes.E_PARSE_INVALID
+
+
+def test_thinking_is_logged_exactly_from_inline_think_blocks_and_null_when_off():
+    from datamate.runtime.pipeline import _thinking
+
+    def call(content, reasoning=None):
+        return ModelCall(call_id="c", stage="solve", template_id="t", backend="http",
+                         request_sha256="0" * 64, params={}, content=content, reasoning=reasoning,
+                         finish_reason="stop", latency_ms=1)
+    # thinking off: no reasoning anywhere -> null
+    assert _thinking([call('{"sql":"SELECT 1"}'), call("{}")]) is None
+    # reasoning parser on: reasoning_content wins, kept byte-for-byte, one entry per call
+    assert _thinking([call("{}", "  a\n"), call("{}")]) == ["  a\n", ""]
+    # no parser: the inline block text is the reasoning; the content is untouched
+    inline = call("<think>\nxét bảng ban_hang\n</think>\n\n{}")
+    assert _thinking([inline]) == ["\nxét bảng ban_hang\n"]
+    assert inline.content.startswith("<think>")
+
+
+def test_managed_thinking_requires_a_reasoning_parser():
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="reasoning_parser"):
+        RunConfig.model_validate({"model": {"path": "/m", "enable_thinking": {"solve": True}},
+                                  "serving": {"mode": "managed"}})
+    RunConfig.model_validate({"model": {"path": "/m", "enable_thinking": {"solve": True}},
+                              "serving": {"mode": "managed", "reasoning_parser": "qwen3"}})
