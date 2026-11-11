@@ -28,7 +28,10 @@ def test_notebook_is_generated_clean_pinned_and_valid_python():
     for src in code:
         ast.parse(src)
     joined = "\n".join(code)
-    for needle in ('VLLM_VERSION     = "0.10.1.1"', "vllm=={VLLM_VERSION}", "model.record_path",
+    # Colab's Python cannot install the pinned vLLM: nothing may run datamate or vLLM with it
+    assert "pip install -q vllm" not in joined and "sys.executable, \"-m\", \"datamate" not in joined
+    for needle in ('VLLM_VERSION     = "0.10.1.1"', "ensure_vllm_env(VLLM_VERSION", "serving.vllm_command",
+                   "[PY, \"-m\", \"datamate.run\"", "model.record_path",
                    "model.enable_thinking", "serving.reasoning_parser", "os.killpg", "check_m1_context.py",
                    "--tokenizer-dir", "count_params.py", "HF_HUB_OFFLINE", "meta.json", "train-A1", "train-A2"):
         assert needle in joined, needle

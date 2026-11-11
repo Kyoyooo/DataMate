@@ -73,27 +73,25 @@ print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(
 ''')
 
 add("code", '''
-# 2. vLLM pinned to the base image version (a different version would make the check meaningless)
-have = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True)
-if have.returncode != 0 or have.stdout.strip() != VLLM_VERSION:
-    sh(f"pip install -q vllm=={VLLM_VERSION}", tail=600)
-    have = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True)
-assert have.returncode == 0 and have.stdout.strip() == VLLM_VERSION, (
-    "vLLM is not importable at the pinned version. Runtime -> Restart session, then Run all again.\\n" + have.stderr[-500:])
-print("vLLM", have.stdout.strip()); mark("vllm ready")
+# 2. Project code (current main)
+shutil.rmtree("/content/DataMate", ignore_errors=True)
+sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
+COMMIT = sh("cd /content/DataMate && git rev-parse HEAD").strip()
+sys.path[:0] = ["/content/DataMate/tools"]
+import colab_helpers, bakeoff
+print("commit", COMMIT)
 ''')
 
 add("code", '''
-# 3. Project code (current main) and its packages
-shutil.rmtree("/content/DataMate", ignore_errors=True)
-sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
-sh("cd /content/DataMate && pip install -q -r requirements.in && pip install -q -e . --no-deps")
-COMMIT = sh("cd /content/DataMate && git rev-parse HEAD").strip()
-sys.path[:0] = ["/content/DataMate/tools", "/content/DataMate/src"]
-import colab_helpers, bakeoff
+# 3. Pinned vLLM in its own Python 3.12 environment (first time: a few minutes).
+#    Colab's Python is too new for vLLM 0.10.1.1 (it needs Python < 3.13), and the base image runs 3.12
+#    with torch 2.7.1+cu128 (CUDA 12.8 builds are needed for Blackwell GPUs). Everything below runs with PY.
+PY, PYINFO = colab_helpers.ensure_vllm_env(VLLM_VERSION, Path("/content/DataMate"))
+VLLM_CMD = json.dumps([PY, "-m", colab_helpers.VLLM_MODULE])
 ENV = {**os.environ, "PYTHONPATH": "/content/DataMate/src", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONHASHSEED": "0"}
-(OUT / "env" / "pip-freeze.txt").write_text(sh(f"{sys.executable} -m pip freeze --all", tail=0))
-print("commit", COMMIT)
+(OUT / "env" / "pip-freeze.txt").write_text(sh(f"{sys.executable} -m uv pip freeze --python {PY}", tail=0))
+(OUT / "env" / "python-env.json").write_text(json.dumps(PYINFO, indent=2))
+print(PYINFO); mark("vllm ready")
 ''')
 
 add("code", '''
@@ -111,7 +109,7 @@ if not MODEL.exists():
     else:
         from huggingface_hub import snapshot_download
         snapshot_download(MODEL_REPO, local_dir=str(MODEL)); shutil.copytree(MODEL, SAVED)
-(OUT / "env" / "count_params.json").write_text(sh(f"{sys.executable} /content/DataMate/tools/count_params.py {MODEL} --json", tail=400))
+(OUT / "env" / "count_params.json").write_text(sh(f"{PY} /content/DataMate/tools/count_params.py {MODEL} --json", tail=400))
 mark("data and model ready")
 ''')
 
@@ -119,8 +117,8 @@ add("code", '''
 # 5. Background CPU job: real-tokenizer schema budget over all training questions (M3-03 / M1-10)
 CTX = None
 if CONTEXT_CHECK:
-    cmd = (f"cd /content/DataMate && {sys.executable} tools/audit_m1.py --split-dir {TRAIN} --output-dir /content/audit --role train"
-           f" && {sys.executable} tools/check_m1_context.py --audit-dir /content/audit --questions {TRAIN}/questions.jsonl"
+    cmd = (f"cd /content/DataMate && {PY} tools/audit_m1.py --split-dir {TRAIN} --output-dir /content/audit --role train"
+           f" && {PY} tools/check_m1_context.py --audit-dir /content/audit --questions {TRAIN}/questions.jsonl"
            f" --output {OUT}/context_check.json --tokenizer-dir {MODEL}")
     CTX = subprocess.Popen(cmd, shell=True, env=ENV, stdout=open(OUT / "context_check.log", "w"), stderr=subprocess.STDOUT)
     print("context check started in the background")
@@ -132,8 +130,9 @@ STATUS = {}
 FRAC = bakeoff.gpu_memory_fraction(TOTAL_GIB, 32.0)
 def run_case(tag, split, background=False, **sets):
     out = Path("/content/runs") / tag; shutil.rmtree(out, ignore_errors=True)
-    base = {"model.path": json.dumps(str(MODEL)), "serving.gpu_memory_utilization": FRAC, "work_dir": json.dumps(f"/content/work/{tag}")}
-    args = [sys.executable, "-m", "datamate.run", "--dev", "--config", "config/colab.json", "--data-dir", str(split), "--result-dir", str(out)]
+    base = {"model.path": json.dumps(str(MODEL)), "serving.gpu_memory_utilization": FRAC, "work_dir": json.dumps(f"/content/work/{tag}"),
+            "serving.vllm_command": VLLM_CMD}
+    args = [PY, "-m", "datamate.run", "--dev", "--config", "config/colab.json", "--data-dir", str(split), "--result-dir", str(out)]
     for k, v in {**base, **sets}.items(): args += ["--set", f"{k}={v}"]
     if background:
         return subprocess.Popen(args, cwd="/content/DataMate", env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True), out
@@ -196,7 +195,7 @@ if CTX is not None:
     print("waiting for the context check ..."); CTX.wait(); STATUS["context_check"] = {"exit": CTX.returncode}
 mark("all done")
 (OUT / "meta.json").write_text(json.dumps({
-    "commit": COMMIT, "model_repo": MODEL_REPO, "vllm": VLLM_VERSION, "gpu": gpu_name, "compute_capability": cap,
+    "commit": COMMIT, "model_repo": MODEL_REPO, "vllm": PYINFO.get("vllm"), "python_env": PYINFO, "gpu": gpu_name, "compute_capability": cap,
     "gpu_total_gib": round(TOTAL_GIB, 1), "gpu_memory_utilization": FRAC, "per_business": PER_BUSINESS,
     "status": STATUS, "times_s": TIMES, "minutes": round((time.time() - T0) / 60, 1)}, indent=2))
 print("saved to", OUT)

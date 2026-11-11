@@ -49,15 +49,12 @@ drive.mount("/content/drive"); Path(DRIVE).mkdir(parents=True, exist_ok=True)
 gpu_name, gpu_mem, cap = [x.strip() for x in sh("nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader").strip().split(",")]
 TOTAL_GIB = float(gpu_mem.split()[0]) / 1024
 print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(not the competition GPU type: results are only indicative)")
-vv = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True).stdout.strip()
-if vv != VLLM_VERSION: sh(f"pip install -q vllm=={VLLM_VERSION}", tail=500)
-vv = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True).stdout.strip()
-assert vv == VLLM_VERSION, "vLLM not importable at the pinned version: Runtime -> Restart session, then Run all again"
 shutil.rmtree("/content/DataMate", ignore_errors=True)
 sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
-sh("cd /content/DataMate && pip install -q -r requirements.in && pip install -q -e . --no-deps")
-sys.path[:0] = ["/content/DataMate/tools", "/content/DataMate/src"]
-import bakeoff
+sys.path[:0] = ["/content/DataMate/tools"]
+import bakeoff, colab_helpers
+# vLLM pinned to the base image version, in its own Python 3.12 environment (Colab's Python is too new for it)
+PY, PYINFO = colab_helpers.ensure_vllm_env(VLLM_VERSION, Path("/content/DataMate")); print(PYINFO)
 COMMIT = sh("cd /content/DataMate && git rev-parse HEAD").strip(); print("commit:", COMMIT)
 ''')
 
@@ -95,14 +92,15 @@ ENV = {**os.environ, "PYTHONPATH": "/content/DataMate/src", "HF_HUB_OFFLINE": "1
 def run_once(name, tag, split, **over):
     out = Path("/content/runs") / f"{name}-{tag}"; shutil.rmtree(out, ignore_errors=True)
     serving = {"gpu_memory_utilization": bakeoff.gpu_memory_fraction(TOTAL_GIB, 32.0), "max_num_seqs": over.pop("max_num_seqs", 64),
-               "enable_prefix_caching": over.pop("enable_prefix_caching", True), "env": over.pop("env", {})}
+               "enable_prefix_caching": over.pop("enable_prefix_caching", True), "env": over.pop("env", {}),
+               "vllm_command": [PY, "-m", colab_helpers.VLLM_MODULE]}
     cfg = {"work_dir": f"/content/work/{name}-{tag}", "model": {"path": str(MODELS[name]), "structured_outputs": over.pop("structured_outputs", True)},
            "serving": {**json.loads(Path("/content/DataMate/config/colab.json").read_text())["serving"], **serving},
            "concurrency": {"questions_per_replica": over.pop("questions_per_replica", 24), "setup_workers": 4}, "exec_limits": {"workers": 8},
            "solver": {"tokenizer": "model"}}
     assert not over, over
     p = Path("/content/configs") / f"{name}-{tag}.json"; p.parent.mkdir(exist_ok=True); p.write_text(json.dumps(cfg))
-    t = time.time(); r = subprocess.run([sys.executable, "-m", "datamate.run", "--config", str(p), "--data-dir", str(split), "--result-dir", str(out)],
+    t = time.time(); r = subprocess.run([PY, "-m", "datamate.run", "--config", str(p), "--data-dir", str(split), "--result-dir", str(out)],
                                         cwd="/content/DataMate", env=ENV, text=True, capture_output=True)
     print(f"{name} {tag}: exit {r.returncode}, {time.time()-t:.0f}s", r.stderr[-300:])
     if out.exists(): shutil.copytree(out, OUT_ROOT / "runs" / out.name, dirs_exist_ok=True)   # keep even failed runs
@@ -128,7 +126,7 @@ for v, over in VARIANTS.items():
 add("code", '''
 # 7. Save a description of what ran, then download the folder (or open it from Drive on your computer)
 shutil.copy(SPLIT / "answers.jsonl", OUT_ROOT / "answers.jsonl"); shutil.copy(DET / "answers.jsonl", OUT_ROOT / "answers_det.jsonl")
-(OUT_ROOT / "meta.json").write_text(json.dumps({"commit": COMMIT, "gpu": gpu_name, "compute_capability": cap, "candidates": CANDIDATES,
+(OUT_ROOT / "meta.json").write_text(json.dumps({"commit": COMMIT, "python_env": PYINFO, "gpu": gpu_name, "compute_capability": cap, "candidates": CANDIDATES,
     "models": {k: str(v.name) for k, v in MODELS.items()}, "variants": list(VARIANTS), "fold": FOLD, "exit_codes": status,
     "minutes": round((time.time() - T0) / 60, 1)}, indent=2))
 print("saved to", OUT_ROOT, "\\nNext, on your own computer: python tools/bakeoff_report.py --runs <that folder> --verify")

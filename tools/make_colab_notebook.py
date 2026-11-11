@@ -42,7 +42,7 @@ def sh(cmd, tail=1500):
     r = subprocess.run(cmd, shell=True, text=True, capture_output=True); print(r.stdout[-tail:], r.stderr[-800:])
     assert r.returncode == 0, f"failed: {cmd}"; return r.stdout
 ENV = {**os.environ, "PYTHONPATH": "/content/DataMate/src", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONHASHSEED": "0"}
-def run(args): return subprocess.run([sys.executable, "-m", *args], cwd="/content/DataMate", env=ENV, text=True, capture_output=True)
+def run(args): return subprocess.run([PY, "-m", *args], cwd="/content/DataMate", env=ENV, text=True, capture_output=True)
 
 from google.colab import drive
 drive.mount("/content/drive"); Path(DRIVE).mkdir(parents=True, exist_ok=True)
@@ -52,23 +52,19 @@ print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(
 ''')
 
 add("code", '''
-# 2. vLLM (the model server). Colab does not include it; this takes a few minutes the first time.
-have = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True)
-if have.returncode != 0 or have.stdout.strip() != VLLM_VERSION:
-    sh(f"pip install -q vllm=={VLLM_VERSION}", tail=600)
-    have = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True)
-assert have.returncode == 0, "vLLM is not importable. Try Runtime -> Restart session, then Run all again.\\n" + have.stderr[-500:]
-print("vLLM", have.stdout.strip())
+# 2. Project code
+shutil.rmtree("/content/DataMate", ignore_errors=True)
+sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
+sys.path[:0] = ["/content/DataMate/tools"]
+import colab_helpers
+print("commit:", sh("cd /content/DataMate && git rev-parse --short HEAD").strip())
 ''')
 
 add("code", '''
-# 3. Project code and packages
-shutil.rmtree("/content/DataMate", ignore_errors=True)
-sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
-sh("cd /content/DataMate && pip install -q -r requirements.in && pip install -q -e . --no-deps")
-sys.path[:0] = ["/content/DataMate/tools", "/content/DataMate/src"]
-import colab_helpers
-print("commit:", sh("cd /content/DataMate && git rev-parse --short HEAD").strip())
+# 3. vLLM (the model server) pinned to the base image version, in its own Python 3.12 environment
+#    (Colab's Python is too new for it). First time: a few minutes.
+PY, PYINFO = colab_helpers.ensure_vllm_env(VLLM_VERSION, Path("/content/DataMate"))
+print(PYINFO)
 ''')
 
 add("code", '''
@@ -105,7 +101,8 @@ SUB = Path("/content/subset"); shutil.rmtree(SUB, ignore_errors=True)
 print(colab_helpers.make_subset_split(TRAIN, SUB, 2, QUESTIONS), "questions selected")
 OUT = Path("/content/out/subset"); shutil.rmtree(OUT, ignore_errors=True)
 frac = round(min(0.95, 32 / (float(gpu_mem.split()[0]) / 1024)), 3)
-sets = {"model.path": json.dumps(str(MODEL)), "serving.gpu_memory_utilization": frac, "work_dir": json.dumps("/content/work/subset")}
+sets = {"model.path": json.dumps(str(MODEL)), "serving.gpu_memory_utilization": frac, "work_dir": json.dumps("/content/work/subset"),
+        "serving.vllm_command": json.dumps([PY, "-m", colab_helpers.VLLM_MODULE])}
 args = ["datamate.run", "--dev", "--config", "config/colab.json", "--data-dir", str(SUB), "--result-dir", str(OUT)]
 for k, v in sets.items(): args += ["--set", f"{k}={v}"]
 r = run(args); print(r.stderr[-1500:])
