@@ -4,3 +4,11 @@
 # builds shipped in the image. Keep this file in sync with pyproject.toml
 # `dependencies`; tools/gen_requirements_lock.sh checks the overlap.
 duckdb>=1.1,<2
+
+# M1 ingestion dependencies
+pyarrow==25.0.1
+python-calamine==0.8.3
+openpyxl==3.1.5
+charset-normalizer==3.4.4
+rapidfuzz==3.14.3
+et-xmlfile==2.0.0

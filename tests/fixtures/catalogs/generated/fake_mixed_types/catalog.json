@@ -1,0 +1,274 @@
+{
+  "business_id": "fake_mixed_types",
+  "bkey": "fake_mixed_types",
+  "db_path": "catalog.duckdb",
+  "tables": [
+    {
+      "name": "products",
+      "source_file": "synthetic:mixed_types",
+      "row_count": 2,
+      "columns": [
+        {
+          "name": "code",
+          "original_name": "code",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "001",
+          "max": "002",
+          "top_values": [
+            [
+              "001",
+              1
+            ],
+            [
+              "002",
+              1
+            ]
+          ],
+          "semantic_hint": "code",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "name",
+          "original_name": "name",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "Cà phê sữa",
+          "max": "Trà đào",
+          "top_values": [
+            [
+              "Cà phê sữa",
+              1
+            ],
+            [
+              "Trà đào",
+              1
+            ]
+          ],
+          "semantic_hint": "name",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "price",
+          "original_name": "price",
+          "sql_type": "DECIMAL(38,6)",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "12.500000",
+          "max": "15.250000",
+          "top_values": [
+            [
+              "12.500000",
+              1
+            ],
+            [
+              "15.250000",
+              1
+            ]
+          ],
+          "semantic_hint": "money",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "active",
+          "original_name": "active",
+          "sql_type": "BOOLEAN",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "false",
+          "max": "true",
+          "top_values": [
+            [
+              "false",
+              1
+            ],
+            [
+              "true",
+              1
+            ]
+          ],
+          "semantic_hint": "status",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        }
+      ],
+      "source_part": null,
+      "candidate_keys": [
+        [
+          "code"
+        ],
+        [
+          "name"
+        ],
+        [
+          "price"
+        ],
+        [
+          "active"
+        ]
+      ],
+      "dropped_rows": {
+        "total_rows": 0,
+        "note_rows": 0,
+        "blank_rows": 0,
+        "summary_rows": 0,
+        "source_indices": {}
+      },
+      "source_details": {}
+    },
+    {
+      "name": "stock",
+      "source_file": "synthetic:mixed_types",
+      "row_count": 2,
+      "columns": [
+        {
+          "name": "code",
+          "original_name": "code",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "001",
+          "max": "002",
+          "top_values": [
+            [
+              "001",
+              1
+            ],
+            [
+              "002",
+              1
+            ]
+          ],
+          "semantic_hint": "code",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "quantity",
+          "original_name": "quantity",
+          "sql_type": "BIGINT",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "2",
+          "max": "5",
+          "top_values": [
+            [
+              "2",
+              1
+            ],
+            [
+              "5",
+              1
+            ]
+          ],
+          "semantic_hint": "quantity",
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        },
+        {
+          "name": "unit",
+          "original_name": "unit",
+          "sql_type": "VARCHAR",
+          "null_count": 0,
+          "distinct_count": 2,
+          "min": "chai",
+          "max": "hộp",
+          "top_values": [
+            [
+              "chai",
+              1
+            ],
+            [
+              "hộp",
+              1
+            ]
+          ],
+          "semantic_hint": null,
+          "null_rate": 0.0,
+          "raw_column": null,
+          "parse_rate": 1.0,
+          "format_note": null,
+          "status_column": null,
+          "unit_column": null,
+          "observed_units": []
+        }
+      ],
+      "source_part": null,
+      "candidate_keys": [
+        [
+          "code"
+        ],
+        [
+          "quantity"
+        ],
+        [
+          "unit"
+        ]
+      ],
+      "dropped_rows": {
+        "total_rows": 0,
+        "note_rows": 0,
+        "blank_rows": 0,
+        "summary_rows": 0,
+        "source_indices": {}
+      },
+      "source_details": {}
+    }
+  ],
+  "data_range": null,
+  "readme_text": "Synthetic catalog with exact decimals, leading-zero codes and explicit stock units.",
+  "schema_card": "TABLE products  (2 rows; source synthetic:mixed_types)\n  code VARCHAR candidate_key nulls 0.00% values: \"001\"(1), \"002\"(1) code [\"code\"]\n  name VARCHAR candidate_key nulls 0.00% values: \"Cà phê sữa\"(1), \"Trà đào\"(1) name [\"name\"]\n  price DECIMAL(38,6) candidate_key nulls 0.00% 12.500000..15.250000 money [\"price\"]\n  active BOOLEAN candidate_key nulls 0.00% false..true status [\"active\"]\nTABLE stock  (2 rows; source synthetic:mixed_types)\n  code VARCHAR candidate_key nulls 0.00% values: \"001\"(1), \"002\"(1) code [\"code\"]\n  quantity BIGINT candidate_key nulls 0.00% 2..5 quantity [\"quantity\"]\n  unit VARCHAR candidate_key nulls 0.00% values: \"chai\"(1), \"hộp\"(1)  [\"unit\"]\nJOIN stock.code -> products.code (candidate n:1, 100.0%)\n",
+  "schema_card_sha256": "24ddbc2418067213c4f4155865134cad5f64cf98f22195dc846a9a02b5850544",
+  "warnings": [],
+  "status": "ready",
+  "joins": [
+    {
+      "left": "stock.code",
+      "right": "products.code",
+      "cardinality": "1:1",
+      "match_rate": 1.0
+    }
+  ],
+  "date_columns": [],
+  "setup_ms": 0,
+  "schema_card_budget_verified": false,
+  "schema_card_needs_subset": false,
+  "views": [],
+  "compile_calls": [],
+  "semantic_annotations": null
+}

@@ -1,0 +1,4 @@
+# Replay hashes include verbatim rulebook bytes. Use identical fixture bytes on
+# Windows and Linux; do not normalize mounted competition rulebooks at runtime.
+tests/fixtures/split_mini/rulebook.md text eol=lf
+tests/fixtures/model_calls/*.jsonl text eol=lf

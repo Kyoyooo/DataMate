@@ -1,0 +1,5 @@
+{
+  "readme": "Synthetic customer list. No sale amount, cost or activity date is supplied.",
+  "tables": [{"name": "customers", "columns": [["code", "VARCHAR", "code"], ["name", "VARCHAR", "name"]], "rows": [["001", "Chị Lan"], ["002", "Anh Tú"]]}],
+  "joins": []
+}
