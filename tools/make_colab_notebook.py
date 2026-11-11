@@ -27,6 +27,7 @@ the license, release date and size must be checked on the model card (the notebo
 
 add("code", '''
 MODEL_REPO = "Qwen/Qwen3-8B"          # EXAMPLE model, Hugging Face repo id
+VLLM_VERSION = "0.10.1.1"             # same vLLM as the reference base image (M4-01)
 QUESTIONS  = 30                       # how many training questions to run
 DRIVE      = "/content/drive/MyDrive/DataMate"
 ''')
@@ -53,8 +54,8 @@ print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(
 add("code", '''
 # 2. vLLM (the model server). Colab does not include it; this takes a few minutes the first time.
 have = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True)
-if have.returncode != 0:
-    sh("pip install -q vllm", tail=600)
+if have.returncode != 0 or have.stdout.strip() != VLLM_VERSION:
+    sh(f"pip install -q vllm=={VLLM_VERSION}", tail=600)
     have = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True)
 assert have.returncode == 0, "vLLM is not importable. Try Runtime -> Restart session, then Run all again.\\n" + have.stderr[-500:]
 print("vLLM", have.stdout.strip())
