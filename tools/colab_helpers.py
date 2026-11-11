@@ -1,4 +1,4 @@
-"""Helpers for the Colab notebooks: a small training subset, and the pinned vLLM environment."""
+"""Helpers for the Colab notebooks: a small training subset, public-test chunks, and the pinned vLLM environment."""
 
 from __future__ import annotations
 
@@ -32,6 +32,59 @@ def make_subset_split(split_dir: Path, out_dir: Path, per_business: int, max_que
                if x.strip() and json.loads(x)["id"] in ids]
     (out_dir / "answers.jsonl").write_text("\n".join(answers) + "\n", encoding="utf-8")
     return len(chosen)
+
+
+# ---------------------------------------------------------------- public test in chunks of whole businesses
+
+def _question_lines(split_dir: Path) -> list[str]:
+    return [x for x in (split_dir / "questions.jsonl").read_text(encoding="utf-8-sig").splitlines() if x.strip()]
+
+
+def make_business_chunks(split_dir: Path, out_root: Path, businesses_per_chunk: int) -> list[Path]:
+    """Split a test split into chunk splits of whole businesses (sorted business ids), so a long Colab run
+    can be resumed chunk by chunk. Each chunk links the split's data, rulebook and calendar and keeps the
+    original question lines (and their order). Refuses a split with answers.jsonl: this is for test splits."""
+    if businesses_per_chunk < 1:
+        raise ValueError("businesses_per_chunk must be >= 1")
+    if (split_dir / "answers.jsonl").exists():
+        raise ValueError("answers.jsonl present: use the training harness for training splits")
+    for name in ("data", "rulebook.md", "calendar.csv", "questions.jsonl"):
+        if not (split_dir / name).exists():
+            raise ValueError(f"not a split directory: {split_dir / name} is missing")
+    lines = _question_lines(split_dir)
+    businesses = sorted({json.loads(x)["business_id"] for x in lines})
+    chunks = []
+    for i in range(0, len(businesses), businesses_per_chunk):
+        group = set(businesses[i:i + businesses_per_chunk])
+        out = out_root / f"chunk-{i // businesses_per_chunk:02d}"
+        out.mkdir(parents=True, exist_ok=True)
+        for name in ("data", "rulebook.md", "calendar.csv"):
+            if not (out / name).exists():
+                os.symlink((split_dir / name).resolve(), out / name)
+        (out / "questions.jsonl").write_text(
+            "\n".join(x for x in lines if json.loads(x)["business_id"] in group) + "\n", encoding="utf-8")
+        chunks.append(out)
+    return chunks
+
+
+def merge_chunk_submissions(split_dir: Path, result_dirs: list[Path], out_path: Path) -> int:
+    """Concatenate the chunk submissions in the order of the split's questions.jsonl. Raises unless every
+    question id appears exactly once across the chunks. Only submission.jsonl is merged: each chunk keeps
+    its own genuine logs and run.json."""
+    rows: dict[str, str] = {}
+    for result in result_dirs:
+        for line in (result / "submission.jsonl").read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                qid = json.loads(line)["id"]
+                if qid in rows:
+                    raise ValueError(f"duplicate id {qid} across chunks")
+                rows[qid] = line
+    ids = list(dict.fromkeys(json.loads(x)["id"] for x in _question_lines(split_dir)))
+    missing, extra = [i for i in ids if i not in rows], sorted(set(rows) - set(ids))
+    if missing or extra:
+        raise ValueError(f"{len(missing)} missing ids, {len(extra)} unknown ids")
+    out_path.write_text("".join(rows[i] + "\n" for i in ids), encoding="utf-8")
+    return len(ids)
 
 
 # ---------------------------------------------------------------- pinned vLLM environment

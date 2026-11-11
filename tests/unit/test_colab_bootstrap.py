@@ -42,6 +42,65 @@ def test_subset_split_is_training_only_and_keeps_answers(tmp_path):
         helpers.make_subset_split(no_answers, tmp_path / "x", 1, 1)
 
 
+
+def _test_split(root, questions):
+    root.mkdir()
+    (root / "data").mkdir()
+    (root / "rulebook.md").write_text("rules")
+    (root / "calendar.csv").write_text("date\n")
+    (root / "questions.jsonl").write_text("".join(json.dumps(q) + "\n" for q in questions))
+    return root
+
+
+def test_public_chunks_are_whole_businesses_in_question_order_and_merge_back(tmp_path):
+    qs = [{"id": f"q{i}", "business_id": b, "question": "?", "as_of_date": "2026-08-27"}
+          for i, b in enumerate(["biz_b", "biz_a", "biz_c", "biz_b", "biz_a"])]
+    split = _test_split(tmp_path / "pub", qs)
+    chunks = helpers.make_business_chunks(split, tmp_path / "chunks", 2)
+    assert [c.name for c in chunks] == ["chunk-00", "chunk-01"]
+    ids = [[json.loads(x)["id"] for x in (c / "questions.jsonl").read_text().splitlines()] for c in chunks]
+    assert ids == [["q0", "q1", "q3", "q4"], ["q2"]]  # biz_a + biz_b, then biz_c; original order kept
+    assert (chunks[0] / "data").resolve() == (split / "data").resolve() and (chunks[1] / "rulebook.md").is_symlink()
+    assert helpers.make_business_chunks(split, tmp_path / "chunks", 2) == chunks  # re-run is idempotent
+
+    results = []
+    for c, part in zip(chunks, reversed(ids), strict=True):  # write the chunk answers in a scrambled order
+        r = tmp_path / f"res-{c.name}"
+        r.mkdir()
+        (r / "submission.jsonl").write_text("".join(json.dumps({"id": i, "type": "abstain"}) + "\n"
+                                                    for i in reversed(sum(ids, [])) if i in set(part)))
+        results.append(r)
+    out = tmp_path / "submission.jsonl"
+    assert helpers.merge_chunk_submissions(split, results, out) == 5
+    assert [json.loads(x)["id"] for x in out.read_text().splitlines()] == ["q0", "q1", "q2", "q3", "q4"]
+    with pytest.raises(ValueError, match="4 missing ids"):
+        helpers.merge_chunk_submissions(split, results[:1], out)
+    with pytest.raises(ValueError, match="duplicate id"):
+        helpers.merge_chunk_submissions(split, results + results[:1], out)
+    (split / "answers.jsonl").write_text("")
+    with pytest.raises(ValueError, match="answers.jsonl present"):
+        helpers.make_business_chunks(split, tmp_path / "c2", 2)
+    with pytest.raises(ValueError, match="missing"):
+        helpers.make_business_chunks(tmp_path / "chunks", tmp_path / "c3", 2)
+
+
+def test_a_chunk_runs_and_passes_precheck_like_a_whole_split(tmp_path):
+    """The chunk layout (symlinked data, rulebook, calendar) is a valid input for datamate.run."""
+    import shutil
+
+    from datamate.run import main as run_main
+    split = tmp_path / "pub"
+    split.mkdir()
+    for name in ("data", "rulebook.md", "calendar.csv", "questions.jsonl"):
+        (shutil.copytree if (SPLIT / name).is_dir() else shutil.copy)(SPLIT / name, split / name)
+    (chunk,) = helpers.make_business_chunks(split, tmp_path / "chunks", 5)
+    out = tmp_path / "out"
+    assert run_main(["--dev", "--config", str(REPO / "config" / "dev.json"), "--data-dir", str(chunk),
+                     "--result-dir", str(out), "--set", f"work_dir={tmp_path / 'w'}"]) == 0
+    precheck = load("precheck")
+    assert precheck.main(["--data-dir", str(chunk), "--result-dir", str(out)]) == 0
+    assert helpers.merge_chunk_submissions(split, [out], tmp_path / "merged.jsonl") == 13
+
 def test_notebook_is_generated_clean_and_valid_python():
     gen = load("make_colab_notebook")
     path = REPO / "notebooks" / "colab_bootstrap.ipynb"
@@ -53,11 +112,13 @@ def test_notebook_is_generated_clean_and_valid_python():
         ast.parse(src)
     joined = "\n".join(code)
     # GPU work only: vLLM, data, model, the real run. CPU work (fixture, scoring, parameter count) is done locally.
-    for needle in ("ensure_vllm_env", "vllm_command", "train.zip", "snapshot_download", "config/colab.json", "HF_HUB_OFFLINE"):
+    for needle in ("ensure_vllm_env", "vllm_command", "train.zip", "snapshot_download", "config/colab.json", "HF_HUB_OFFLINE",
+                   "--branch {BRANCH}", "make_business_chunks", "merge_chunk_submissions", "tools/precheck.py", "DONE"):
         assert needle in joined, needle
     for cpu_only in ("tests/fixtures", "count_params", "eval.score\"]"):
         assert cpu_only not in joined, cpu_only
     assert "MODEL_REPO" in joined.split("\n")[0] + "\n".join(code[:1])  # the model is one editable parameter
+    assert "RUN_PUBLIC_TEST = False" in code[0]  # the public test is opt-in
 
 
 # ---------------------------------------------------------------- pinned vLLM environment
