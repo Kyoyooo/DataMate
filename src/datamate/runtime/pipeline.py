@@ -8,6 +8,7 @@ kept in the log record's decision field.
 
 from __future__ import annotations
 
+import re
 import time
 import traceback
 from typing import Any
@@ -51,11 +52,25 @@ def _execution_fields(attempts: list[SolverAttempt], max_rows: int) -> tuple[Any
     return code, output
 
 
+_THINK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+
+
+def _reasoning_of(call: ModelCall) -> str | None:
+    """The call's reasoning exactly as generated (DG §3.3): vLLM's ``reasoning_content`` when a
+    reasoning parser split it out, else the text of an inline ``<think>…</think>`` block left in
+    the content (no parser configured). The content itself is never modified."""
+    if call.reasoning is not None:
+        return call.reasoning
+    m = _THINK.search(call.content or "")
+    return m.group(1) if m else None
+
+
 def _thinking(calls: list[ModelCall]) -> list[str] | None:
     """SPEC SC-7: None if no call produced reasoning; else one entry per call, in order."""
-    if all(c.reasoning is None for c in calls):
+    found = [_reasoning_of(c) for c in calls]
+    if all(r is None for r in found):
         return None
-    return [c.reasoning or "" for c in calls]
+    return [r or "" for r in found]
 
 
 def _examples(q: Question, frame: QuestionFrame, cfg: RunConfig, bank: FewshotBank | None,

@@ -9,6 +9,9 @@ test stays identical to production:
   FAKE_VLLM_DIE_AFTER_S exit after serving for this long (simulates a replica crash)
   FAKE_VLLM_MARKER      with FAKE_VLLM_EXIT_CODE: only the first start (marker file absent) fails;
                         it creates the marker, so a restart starts normally
+  FAKE_VLLM_FAIL_GPUS   comma-separated CUDA_VISIBLE_DEVICES values whose launch always fails
+                        (exit 4): one broken GPU among healthy ones
+  FAKE_VLLM_REPLY_DELAY_S seconds to wait before answering a completion (a slow model)
 """
 
 from __future__ import annotations
@@ -33,6 +36,10 @@ def main(argv: list[str]) -> int:
                 continue
             flags[argv[i]] = ""
         i += 1
+    failing = [g for g in os.environ.get("FAKE_VLLM_FAIL_GPUS", "").split(",") if g]
+    if os.environ.get("CUDA_VISIBLE_DEVICES", "") in failing:
+        print("fake vllm: simulated broken GPU", flush=True)
+        return 4
     code = os.environ.get("FAKE_VLLM_EXIT_CODE")
     marker = os.environ.get("FAKE_VLLM_MARKER")
     if code and not (marker and os.path.exists(marker)):
@@ -54,6 +61,7 @@ def main(argv: list[str]) -> int:
 
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            time.sleep(float(os.environ.get("FAKE_VLLM_REPLY_DELAY_S", "0")))
             text = f"pong:{body['max_tokens']}"
             data = json.dumps({"choices": [{"message": {"content": text}, "finish_reason": "stop"}]}
                               ).encode()

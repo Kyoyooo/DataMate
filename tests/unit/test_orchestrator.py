@@ -267,3 +267,39 @@ def test_managed_serving_unstartable_replicas_still_deliver_all_abstain(tmp_path
     assert main(["--config", str(tmp_path / "cfg.json"), "--data-dir", str(SPLIT),
                  "--result-dir", str(out)]) == 0
     assert set(reasons(out).values()) == {"E_REPLICA_DOWN"}
+
+
+def test_managed_serving_continues_on_the_surviving_replica(tmp_path):
+    import sys
+
+    from test_replicas import FAKE, free_port
+
+    from datamate.run import main
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    conf = {"work_dir": str(tmp_path / "work"), "model": {"path": str(model_dir)},
+            "serving": {"mode": "managed", "replicas": 2, "base_port": free_port(),
+                        "vllm_command": [sys.executable, FAKE], "startup_timeout_s": 20,
+                        "health_poll_interval_s": 0.05, "shutdown_timeout_s": 5,
+                        "env": {"FAKE_VLLM_FAIL_GPUS": "1"}},
+            "concurrency": {"questions_per_replica": 2}, "solver": {"tokenizer": "estimate"},
+            "exec_limits": {"workers": 2}}
+    (tmp_path / "cfg.json").write_text(json.dumps(conf))
+    out = tmp_path / "out"
+    assert main(["--config", str(tmp_path / "cfg.json"), "--data-dir", str(SPLIT),
+                 "--result-dir", str(out)]) == 0
+    # every question reached replica 0 (the fake answers "pong": parse is invalid, never DOWN)
+    assert set(reasons(out).values()) == {"E_PARSE_INVALID"}
+    run_json = json.loads((out / "logs" / "run.json").read_text())
+    assert run_json["replicas"]["active"] == [0]
+
+
+def test_global_stop_counts_from_process_start(tmp_path):
+    # main() passes its own start time: here the process "started" 10 s ago (model loading),
+    # so a 5 s global budget is already spent before any question runs.
+    cfg = cfg_for(tmp_path, deadlines__global_hard_stop_s=5)
+    out = tmp_path / "out"
+    assert run(cfg, fresh_clients(1), SPLIT, out, dev=True, overrides=[],
+               started_at=time.monotonic() - 10) == 0
+    assert len((out / "submission.jsonl").read_text().splitlines()) == 13
+    assert set(reasons(out).values()) == {"E_GLOBAL_STOP"}

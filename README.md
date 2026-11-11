@@ -2,7 +2,7 @@
 
 An offline agent that answers Vietnamese questions over business CSV/Excel/SQLite data, or reports `unanswerable` / `abstain`. Competition requirements: [`docs/COMPETITION_BRIEF.md`](docs/COMPETITION_BRIEF.md). Technical design: [`docs/SPEC.md`](docs/SPEC.md) (see §18 for what the current code implements and defers). Backlog: [`docs/TASKS.md`](docs/TASKS.md). Workflow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-> **Status (2026-11-11): CPU pipeline complete; no real-model run yet.** Real CSV/Excel/SQLite ingestion ([M1 handoff](docs/M1_IMPLEMENTATION.md)), rulebook/temporal/decision/formatting (M2), loopback HTTP client, prompts, budgeting, process sandbox and replay (M3), replica manager, concurrent orchestrator, run records, `Dockerfile`/`predict.sh` and prechecks (M4) are merged and CPU-tested. Not yet done: model choice (DEC-3), `requirements.lock`, an image built on the reference base, any run on a GPU. Progress: [`docs/M3_M4_PROGRESS.md`](docs/M3_M4_PROGRESS.md). Fixture results are plumbing checks, not competition accuracy.
+> **Status (2026-11-11): CPU pipeline complete; no real-model run yet.** Real CSV/Excel/SQLite ingestion ([M1 handoff](docs/M1_IMPLEMENTATION.md)), rulebook/temporal/decision/formatting (M2), loopback HTTP client, prompts, budgeting, process sandbox and replay (M3), replica manager, concurrent orchestrator, run records, `Dockerfile`/`predict.sh` and prechecks (M4) are merged and CPU-tested. Not yet done: model choice (DEC-3), `requirements.lock`, an image built on the reference base, any run on a GPU. All GPU-only checks run in one Colab session: [`docs/runbooks/gpu-phase2.md`](docs/runbooks/gpu-phase2.md). Progress: [`docs/M3_M4_PROGRESS.md`](docs/M3_M4_PROGRESS.md). Fixture results are plumbing checks, not competition accuracy.
 
 ## Setup (CPU, no GPU, no model weights, no network at run time)
 
@@ -59,13 +59,13 @@ questions ─► parse/ (model → QuestionFrame) ─► temporal/ (TimeWindows,
 | Package | Owner | Role | Bootstrap state |
 |---|---|---|---|
 | `contracts/` | Lead | Shared types, reason codes, exact JSON 1.10.0 (P1 freeze, then additive minors only: SPEC §18.4–§18.14) |
-| `eval/` | Lead | Scorer (`python -m datamate.eval.score`); harness later | scorer |
+| `eval/` | Lead | Scorer (`python -m datamate.eval.score`, `--logs` per reason code); fold harness (`python -m datamate.eval.harness`) | scorer, harness (CPU-tested) |
 | `ingest/`, `catalog/`, `lexicon/` | M1 | Files → DuckDB catalog; `fold()` | CSV/Excel/SQLite ingestion, Vietnamese formats, profiling and bounded prompt schemas; [M1 handoff](docs/M1_IMPLEMENTATION.md) |
 | `rules/`, `temporal/`, `decision/`, `formatting/` | M2 | Rulebook, time windows, gate, wire values | calendar validation; generic CLI time params with an opt-in CPU-tested extraction boundary ([M2 handoff](docs/M2_RULEBOOK_CALENDAR.md)) |
 | `llm/` (client), `prompts/`, `parse/`, `solver/`, `sandbox/` | M3 | Model calls, prompts, SQL, execution | HTTP, replay and dev scripted clients; budgeting; killable process sandbox pool |
 | `runtime/`, `run.py`, `config.py`, `llm/replicas.py` | M4 | Orchestration, writer, config, serving, Docker | concurrent orchestrator, replica manager, Dockerfile/`predict.sh` (CPU-tested; no image on the reference base yet) |
 
-Experimental M1 packages, default off: `entities/` (M1-12, P2), `semantics/` (M1-13, P2). Still planned: `eval/harness.py` (L-12).
+Experimental M1 packages, default off: `entities/` (M1-12, P2), `semantics/` (M1-13, P2).
 
 ## Configuration
 

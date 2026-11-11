@@ -47,13 +47,14 @@ def test_build_command_matches_spec_7_13_1():
     cfg = RunConfig.model_validate({
         "model": {"path": "/code/models/m", "served_model_name": "datamate", "seed": 7},
         "serving": {"mode": "managed", "replicas": 2, "base_port": 8100, "dtype": "bfloat16",
-                    "max_model_len": 4096, "gpu_memory_utilization": 0.9, "max_num_seqs": 32,
+                    "max_model_len": 8192, "gpu_memory_utilization": 0.9, "max_num_seqs": 32,
                     "reasoning_parser": "qwen3", "quantization": "fp8",
-                    "extra_server_args": ["--max-num-batched-tokens", "8192"]}})
+                    "extra_server_args": ["--max-num-batched-tokens", "8192"]},
+        "solver": {"context_budget_tokens": 3000}})
     assert build_command(cfg, 1) == [
         "python3", "-m", "vllm.entrypoints.openai.api_server",
         "--model", "/code/models/m", "--served-model-name", "datamate", "--dtype", "bfloat16",
-        "--max-model-len", "4096", "--gpu-memory-utilization", "0.9", "--max-num-seqs", "32",
+        "--max-model-len", "8192", "--gpu-memory-utilization", "0.9", "--max-num-seqs", "32",
         "--seed", "7", "--host", "127.0.0.1", "--port", "8101", "--enable-prefix-caching",
         "--generation-config", "vllm", "--reasoning-parser", "qwen3", "--quantization", "fp8",
         "--max-num-batched-tokens", "8192"]
@@ -184,3 +185,42 @@ def test_restart_that_fails_reports_false(tmp_path):
         assert mgr.restart(0) is False
         assert mgr.replicas[0].state == "dead"
         assert any(e["event"] == "restart_failed" for e in mgr.events)
+
+
+def test_one_broken_gpu_keeps_the_healthy_replica(tmp_path):
+    # GPU 1 always fails: it gets its restart, then the run continues on replica 0 alone.
+    cfg = make_cfg(tmp_path, replicas=2, max_restarts=1, env={"FAKE_VLLM_FAIL_GPUS": "1"})
+    with ReplicaManager(cfg, tmp_path / "logs") as mgr:
+        assert mgr.active == [0]
+        assert [r.state for r in mgr.replicas] == ["ready", "dead"]
+        assert mgr.replicas[1].restarts == 1
+        assert [c.base_url for c in mgr.client_configs()] == [mgr.replicas[0].base_url]
+        assert mgr.poll() == []  # a replica that never started is not reported as died
+        kinds = [e["event"] for e in mgr.events if e["replica"] == 1]
+        assert kinds[:1] == ["launch"] and "start_failed" in kinds and "restart_failed" in kinds
+        assert mgr.record()["active"] == [0]
+    assert "simulated broken GPU" in (tmp_path / "logs" / "replica-1.log").read_text()
+
+
+def test_replica_that_fails_once_at_startup_is_restarted(tmp_path):
+    cfg = make_cfg(tmp_path, replicas=1, max_restarts=1,
+                   env={"FAKE_VLLM_EXIT_CODE": "5", "FAKE_VLLM_MARKER": str(tmp_path / "m")})
+    with ReplicaManager(cfg, tmp_path / "logs") as mgr:
+        assert mgr.active == [0] and mgr.replicas[0].state == "ready"
+        assert mgr.replicas[0].restarts == 1
+
+
+def test_startup_budget_must_fit_the_global_stop():
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="leaves no time"):
+        RunConfig.model_validate({"model": {"path": "/m"},
+                                  "serving": {"mode": "managed", "startup_timeout_s": 900,
+                                              "max_restarts": 1},
+                                  "deadlines": {"global_hard_stop_s": 1800}})
+
+
+def test_requests_must_fit_the_served_context():
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="max_model_len = 16384"):
+        RunConfig.model_validate({"model": {"path": "/m"},
+                                  "serving": {"mode": "managed", "max_model_len": 16384}})

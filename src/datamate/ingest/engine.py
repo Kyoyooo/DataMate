@@ -1260,7 +1260,17 @@ def build_business_database(
                 except ValueError:
                     warnings.append(f"W_DELIMITER_UNRECOGNIZED {relative}")
                     continue
-            for part, index, block, details in source_fragments(path, config):
+            # One unreadable file (corrupt workbook, permission error, unknown format) must not
+            # fail the whole business: skip it with W_UNSUPPORTED_FILE, which also stops the
+            # decision gate from confirming a field as missing (the schema is incomplete).
+            try:
+                fragments = list(source_fragments(path, config))
+            except Exception as error:  # noqa: BLE001 - file boundary (M4-11)
+                warnings.append(
+                    f"W_UNSUPPORTED_FILE {relative} {type(error).__name__}: {str(error)[:200]}"
+                )
+                continue
+            for part, index, block, details in fragments:
                 base = (
                     identifier(path.stem)
                     + (f"__{identifier(part)}" if part is not None else "")

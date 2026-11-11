@@ -30,6 +30,7 @@ Only manual step: put `train.zip` into `MyDrive/DataMate/`. The candidates below
 
 add("code", '''
 CANDIDATES = ["Qwen/Qwen3-8B"]          # EXAMPLES (Hugging Face repo ids). Add more, e.g. "Qwen/Qwen3-14B-FP8"
+VLLM_VERSION = "0.10.1.1"               # same vLLM as the reference base image (M4-01)
 FOLD = 0                                # held-out = whole businesses of this fold (0..4)
 DETERMINISM_QUESTIONS_PER_BUSINESS = 6  # size of the subset for the determinism experiments
 DRIVE = "/content/drive/MyDrive/DataMate"
@@ -48,8 +49,10 @@ drive.mount("/content/drive"); Path(DRIVE).mkdir(parents=True, exist_ok=True)
 gpu_name, gpu_mem, cap = [x.strip() for x in sh("nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader").strip().split(",")]
 TOTAL_GIB = float(gpu_mem.split()[0]) / 1024
 print("GPU:", gpu_name, "| compute capability", cap, "" if cap == "12.0" else "(not the competition GPU type: results are only indicative)")
-if subprocess.run([sys.executable, "-c", "import vllm"], capture_output=True).returncode != 0: sh("pip install -q vllm", tail=500)
-assert subprocess.run([sys.executable, "-c", "import vllm"], capture_output=True).returncode == 0, "vLLM not importable: Runtime -> Restart session, then Run all again"
+vv = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True).stdout.strip()
+if vv != VLLM_VERSION: sh(f"pip install -q vllm=={VLLM_VERSION}", tail=500)
+vv = subprocess.run([sys.executable, "-c", "import vllm; print(vllm.__version__)"], capture_output=True, text=True).stdout.strip()
+assert vv == VLLM_VERSION, "vLLM not importable at the pinned version: Runtime -> Restart session, then Run all again"
 shutil.rmtree("/content/DataMate", ignore_errors=True)
 sh("git clone -q https://github.com/Kyoyooo/DataMate /content/DataMate")
 sh("cd /content/DataMate && pip install -q -r requirements.in && pip install -q -e . --no-deps")

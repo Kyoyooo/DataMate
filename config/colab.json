@@ -11,7 +11,7 @@
     "replicas": 1,
     "base_port": 8100,
     "dtype": "bfloat16",
-    "max_model_len": 16384,
+    "max_model_len": 32768,
     "gpu_memory_utilization": 0.33,
     "max_num_seqs": 64,
     "enable_prefix_caching": true,

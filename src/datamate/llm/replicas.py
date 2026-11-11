@@ -113,6 +113,7 @@ class ReplicaManager:
         self.replicas = [Replica(i, cfg.serving.base_port + i, gpu_ids_for(cfg.serving, i),
                                  self.log_dir / f"replica-{i}.log")
                          for i in range(cfg.serving.replicas)]
+        self.active: list[int] = []  # indices of replicas that started; set by start()
 
     # -- observability ---------------------------------------------------------------------
 
@@ -126,8 +127,13 @@ class ReplicaManager:
         return [r.base_url for r in self.replicas]
 
     def client_configs(self) -> list[ModelConfig]:
-        """One ModelConfig per replica with ``base_url`` wired to its server."""
-        return [self.cfg.model.model_copy(update={"base_url": r.base_url}) for r in self.replicas]
+        """One ModelConfig per active replica with ``base_url`` wired to its server.
+
+        Position ``k`` in this list is the orchestrator's replica ``k``; ``poll`` and ``restart``
+        use the same positions (``active[k]`` is the replica index).
+        """
+        return [self.cfg.model.model_copy(update={"base_url": self.replicas[i].base_url})
+                for i in self.active]
 
     def record(self) -> dict[str, Any]:
         """Replica section of run.json (SPEC §8.5)."""
@@ -136,22 +142,48 @@ class ReplicaManager:
                 "states": [r.state for r in self.replicas],
                 "ports": [r.port for r in self.replicas], "gpus": [r.gpus for r in self.replicas],
                 "commands": [build_command(self.cfg, r.index) for r in self.replicas],
+                "active": list(self.active),
                 "events": list(self.events)}
 
     # -- lifecycle -------------------------------------------------------------------------
 
     def start(self) -> None:
-        """Launch every replica, then wait for each to be healthy and warm. Raises ReplicaError."""
+        """Launch every replica, then wait for each to be healthy and warm.
+
+        A replica that fails to start gets its restart budget (``serving.max_restarts``); one that
+        still fails is marked dead and the run continues on the others (``active``). Raises
+        ReplicaError only when no replica is ready, after stopping everything.
+        """
         self.log_dir.mkdir(parents=True, exist_ok=True)
         launched: dict[int, float] = {}
+        errors: dict[int, str] = {}
         try:
             for r in self.replicas:
-                launched[r.index] = self._launch(r)
-            for r in self.replicas:
-                self._wait_ready(r, launched[r.index])
+                try:
+                    launched[r.index] = self._launch(r)
+                except ReplicaError as exc:
+                    errors[r.index] = str(exc)
+            for r in self.replicas:  # first pass: every launched replica loads in parallel
+                if r.index not in launched:
+                    continue
+                try:
+                    self._wait_ready(r, launched[r.index])
+                except ReplicaError as exc:
+                    errors[r.index] = str(exc)
+            for index in sorted(errors):  # second pass: bounded restarts of the failed ones
+                r = self.replicas[index]
+                self._terminate(r)
+                r.state = "dead"
+                self._event("start_failed", index, error=errors[index])
+                if self._restart_index(index):
+                    del errors[index]
         except BaseException:
             self.stop()
             raise
+        self.active = [r.index for r in self.replicas if r.state == "ready"]
+        if not self.active:
+            self.stop()
+            raise ReplicaError("no replica started: " + "; ".join(errors[i] for i in sorted(errors)))
 
     def _port_free(self, port: int) -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -223,18 +255,23 @@ class ReplicaManager:
                     warmup_request_sha256=call.request_sha256)
 
     def poll(self) -> list[int]:
-        """Indices of replicas whose process has exited since they became ready."""
+        """Positions (in ``active``) of replicas whose process has exited since they were ready."""
         dead = []
         with self._lock:
-            for r in self.replicas:
+            for pos, i in enumerate(self.active):
+                r = self.replicas[i]
                 if r.state == "ready" and r.process is not None and r.process.poll() is not None:
                     r.state = "dead"
                     self._event("died", r.index, returncode=r.process.returncode)
                 if r.state == "dead":
-                    dead.append(r.index)
+                    dead.append(pos)
         return dead
 
-    def restart(self, index: int) -> bool:
+    def restart(self, position: int) -> bool:
+        """Restart the active replica at ``position`` (see ``poll``)."""
+        return self._restart_index(self.active[position])
+
+    def _restart_index(self, index: int) -> bool:
         """One bounded restart attempt (SPEC §7.12-10). False when the budget is spent or it fails."""
         with self._lock:
             r = self.replicas[index]

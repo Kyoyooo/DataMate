@@ -12,6 +12,7 @@
 #   requirements.lock.base         pip freeze of the untouched base image
 #   requirements.lock.meta.json    image id, repo digest, python/torch/vllm versions
 set -euo pipefail
+trap 'rm -f "$ROOT/requirements.lock.tmp"' EXIT
 
 BASE_IMAGE="${1:-vllm/vllm-openai:v0.10.1.1}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,8 +34,14 @@ docker run --rm --entrypoint "" "$BASE_IMAGE" python3 -m pip freeze --all \
 docker run --rm --entrypoint "" -v "$ROOT/requirements.in:/tmp/requirements.in:ro" \
   -v "$ROOT/requirements.lock.base:/tmp/constraints.txt:ro" "$BASE_IMAGE" bash -c '
     set -euo pipefail
-    python3 -m pip install --no-cache-dir -c /tmp/constraints.txt -r /tmp/requirements.in >&2
-    python3 -m pip freeze --all' | LC_ALL=C sort > requirements.lock
+    if ! python3 -m pip install --no-cache-dir -c /tmp/constraints.txt -r /tmp/requirements.in >&2; then
+      echo "error: requirements.in conflicts with a package version shipped in the base image" >&2
+      echo "       (see the pip resolver message above); widen the range in requirements.in" >&2
+      echo "       and pyproject.toml, never re-pin a base-image package" >&2
+      exit 3
+    fi
+    python3 -m pip freeze --all' | LC_ALL=C sort > requirements.lock.tmp
+mv requirements.lock.tmp requirements.lock
 
 docker run --rm -i --entrypoint "" "$BASE_IMAGE" python3 - > requirements.lock.meta.json <<PY
 import json, platform, sys

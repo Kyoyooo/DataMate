@@ -56,6 +56,15 @@ def test_two_fresh_processes_are_byte_identical(tmp_path):
     assert strip_timing(a / "logs" / "questions.jsonl") == strip_timing(b / "logs" / "questions.jsonl")
 
 
+def test_one_and_eight_workers_give_identical_bytes_on_recorded_calls(tmp_path):
+    # M4-05 acceptance: concurrency must not change outputs when model calls are replayed.
+    one = fresh_run(tmp_path, "w1", "--set", "concurrency.questions_per_replica=1")
+    eight = fresh_run(tmp_path, "w8", "--set", "concurrency.questions_per_replica=8")
+    assert (one / "submission.jsonl").read_bytes() == (eight / "submission.jsonl").read_bytes()
+    assert strip_timing(one / "logs" / "questions.jsonl") == strip_timing(
+        eight / "logs" / "questions.jsonl")
+
+
 def test_replayed_run_is_correct_and_has_no_misses(tmp_path):
     out = fresh_run(tmp_path, "a", "--set", "concurrency.questions_per_replica=6")
     result = score_files(out / "submission.jsonl", SPLIT / "answers.jsonl")

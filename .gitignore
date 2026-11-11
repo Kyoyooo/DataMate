@@ -39,3 +39,6 @@ dist/
 
 # Local copies of competition data (never commit)
 /data/
+
+# Local reference project (not part of this codebase; contains copies of competition data)
+/baseline_DataMate/
