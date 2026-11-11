@@ -101,6 +101,17 @@ def test_a_chunk_runs_and_passes_precheck_like_a_whole_split(tmp_path):
     assert precheck.main(["--data-dir", str(chunk), "--result-dir", str(out)]) == 0
     assert helpers.merge_chunk_submissions(split, [out], tmp_path / "merged.jsonl") == 13
 
+
+def test_run_meta_resumes_only_the_same_code_and_model(tmp_path):
+    meta = helpers.run_meta(tmp_path, commit="abc", model="m", folds=5)
+    meta["folds_done"] = {"0": {"minutes": 1}}
+    helpers.save_meta(tmp_path, meta)
+    again = helpers.run_meta(tmp_path, commit="abc", model="m", folds=5)
+    assert again["folds_done"] == {"0": {"minutes": 1}}
+    for clash in ({"commit": "def"}, {"model": "other"}, {"folds": 10}):
+        with pytest.raises(ValueError, match="use a new run name"):
+            helpers.run_meta(tmp_path, **{"commit": "abc", "model": "m", "folds": 5, **clash})
+
 def test_notebook_is_generated_clean_and_valid_python():
     gen = load("make_colab_notebook")
     path = REPO / "notebooks" / "colab_bootstrap.ipynb"
@@ -113,12 +124,15 @@ def test_notebook_is_generated_clean_and_valid_python():
     joined = "\n".join(code)
     # GPU work only: vLLM, data, model, the real run. CPU work (fixture, scoring, parameter count) is done locally.
     for needle in ("ensure_vllm_env", "vllm_command", "train.zip", "snapshot_download", "config/colab.json", "HF_HUB_OFFLINE",
-                   "--branch {BRANCH}", "make_business_chunks", "merge_chunk_submissions", "tools/precheck.py", "DONE"):
+                   "--branch {BRANCH}", "make_business_chunks", "merge_chunk_submissions", "tools/precheck.py", "DONE",
+                   "datamate.eval.harness", "--all-folds", "--resume", "tools/error_analysis.py", "projection.json",
+                   "colab_helpers.run_meta"):
         assert needle in joined, needle
     for cpu_only in ("tests/fixtures", "count_params", "eval.score\"]"):
         assert cpu_only not in joined, cpu_only
     assert "MODEL_REPO" in joined.split("\n")[0] + "\n".join(code[:1])  # the model is one editable parameter
     assert "RUN_PUBLIC_TEST = False" in code[0]  # the public test is opt-in
+    assert "RUN_FULL_TRAINING = False" in code[0]  # so is the full training run
 
 
 # ---------------------------------------------------------------- pinned vLLM environment

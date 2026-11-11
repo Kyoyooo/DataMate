@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def make_subset_split(split_dir: Path, out_dir: Path, per_business: int, max_questions: int) -> int:
@@ -85,6 +86,22 @@ def merge_chunk_submissions(split_dir: Path, result_dirs: list[Path], out_path: 
         raise ValueError(f"{len(missing)} missing ids, {len(extra)} unknown ids")
     out_path.write_text("".join(rows[i] + "\n" for i in ids), encoding="utf-8")
     return len(ids)
+
+
+def run_meta(dest: Path, **identity: Any) -> dict[str, Any]:
+    """meta.json of a resumable run folder. A run is continued only with the same identity (commit, model,
+    folds, ...): one result must never mix code or model versions. Raises ValueError on a mismatch."""
+    path = dest / "meta.json"
+    meta: dict[str, Any] = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    clash = {k: (meta[k], v) for k, v in identity.items() if k in meta and meta[k] != v}
+    if clash:
+        raise ValueError(f"{dest} was started with different settings {clash}: use a new run name")
+    meta.update(identity)
+    return meta
+
+
+def save_meta(dest: Path, meta: dict[str, Any]) -> None:
+    (dest / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
 
 
 # ---------------------------------------------------------------- pinned vLLM environment

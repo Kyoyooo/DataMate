@@ -15,19 +15,23 @@ def add(kind: str, text: str) -> None:
 
 
 add("markdown", """
-# Colab quick start (all in one)
+# Colab runs: smoke test, full training run, public test
 
-**Run all, once.** This notebook does only what needs the GPU: vLLM, the model (downloaded if you do not have it yet) and 30 training questions.
+**Run all.** This notebook does only what needs the GPU: vLLM, the model (downloaded if you do not have it yet), a smoke test
+on 30 training questions and, if switched on, the full training run and the public test. Both long runs save every finished
+part to Drive; after a disconnect, *Run all* again with the same run names continues where it stopped.
 Results are saved to Google Drive. Everything else (tests, the fixture check, scoring, parameter count, licence check) is done on your own computer without a GPU.
 
 Only one manual step: put **`train.zip`** (the training split you received, 128 MB) in `MyDrive/DataMate/` on Google Drive.
 The model is an **example** (`Qwen/Qwen3-8B`): change `MODEL_REPO` to try another. Which model is used for the competition is the team lead's decision;
 the license, release date and size must be checked on the model card (the notebook prints the parameter count).
 
-**Optional public test (Round 1).** Set `RUN_PUBLIC_TEST = True` and put the public test zip (`PUBLIC_ZIP`) in `MyDrive/DataMate/`.
-After the 30 training questions (the smoke test), the public test runs a few businesses at a time; each finished chunk is saved to Drive,
-so after a disconnect, *Run all* again continues with the next chunk. The merged `submission.jsonl` is for the Round 1 leaderboard only
-(reference). Never tune prompts or rules on public-test questions, and never commit its data or results (the repository is public).
+**Full training run (TASKS L-06).** `RUN_FULL_TRAINING = True`: all training questions through the evaluation harness, one
+fold of whole businesses at a time; PA by type and reason code, an error analysis and a runtime projection are saved to Drive.
+
+**Public test (Round 1).** `RUN_PUBLIC_TEST = True` and the public test zip (`PUBLIC_ZIP`) in `MyDrive/DataMate/`: runs a few
+businesses at a time and merges one `submission.jsonl` for the Round 1 leaderboard (reference only). Never tune prompts or rules
+on public-test questions, and never commit its data or results (the repository is public).
 """)
 
 add("code", '''
@@ -36,7 +40,10 @@ VLLM_VERSION = "0.10.1.1"             # same vLLM as the reference base image (M
 QUESTIONS  = 30                       # how many training questions to run
 DRIVE      = "/content/drive/MyDrive/DataMate"
 BRANCH     = "main"                   # code branch to run (recorded in the results)
-RUN_PUBLIC_TEST = False               # True: also run the public test (Round 1) after the training smoke test
+RUN_FULL_TRAINING = False             # True: all training questions, fold by fold (TASKS L-06)
+TRAIN_RUN  = "train-full-1"           # results go to MyDrive/DataMate/runs/<TRAIN_RUN>/; same name = resume, new name = fresh run
+FOLDS      = 5                        # whole-business folds (the harness rule); more folds = smaller parts, more model loads
+RUN_PUBLIC_TEST = False               # True: also run the public test (Round 1)
 PUBLIC_ZIP = "public_test.zip"        # in MyDrive/DataMate/ (or an unzipped copy in MyDrive/DataMate/data/public_test/)
 PUBLIC_RUN = "public-1"               # results go to MyDrive/DataMate/runs/<PUBLIC_RUN>/; same name = resume, new name = fresh run
 BUSINESSES_PER_CHUNK = 5              # whole businesses per chunk (a disconnect loses at most the running chunk)
@@ -69,7 +76,8 @@ shutil.rmtree("/content/DataMate", ignore_errors=True)
 sh(f"git clone -q --branch {BRANCH} https://github.com/Kyoyooo/DataMate /content/DataMate")
 sys.path[:0] = ["/content/DataMate/tools"]
 import colab_helpers
-print("commit:", sh("cd /content/DataMate && git rev-parse --short HEAD").strip())
+COMMIT = sh("cd /content/DataMate && git rev-parse HEAD").strip()
+print("branch:", BRANCH, "| commit:", COMMIT[:12])
 ''')
 
 add("code", '''
@@ -113,12 +121,15 @@ SUB = Path("/content/subset"); shutil.rmtree(SUB, ignore_errors=True)
 print(colab_helpers.make_subset_split(TRAIN, SUB, 2, QUESTIONS), "questions selected")
 OUT = Path("/content/out/subset"); shutil.rmtree(OUT, ignore_errors=True)
 frac = round(min(0.95, 32 / (float(gpu_mem.split()[0]) / 1024)), 3)
-def run_split(data_dir, out_dir, work):
+def run_sets(work):  # the same settings for every run in this notebook: config/colab.json + model, memory, vLLM command
     sets = {"model.path": json.dumps(str(MODEL)), "serving.gpu_memory_utilization": frac, "work_dir": json.dumps(work),
             "serving.vllm_command": json.dumps([PY, "-m", colab_helpers.VLLM_MODULE])}
-    args = ["datamate.run", "--dev", "--config", "config/colab.json", "--data-dir", str(data_dir), "--result-dir", str(out_dir)]
-    for k, v in sets.items(): args += ["--set", f"{k}={v}"]
-    return run(args)
+    return [x for k, v in sets.items() for x in ("--set", f"{k}={v}")]
+def run_split(data_dir, out_dir, work):
+    return run(["datamate.run", "--dev", "--config", "config/colab.json", "--data-dir", str(data_dir),
+                "--result-dir", str(out_dir), *run_sets(work)])
+IDENTITY = {"commit": COMMIT, "model": MODEL_REPO, "config": "config/colab.json", "gpu_memory_utilization": frac}
+ABOUT = {"branch": BRANCH, "gpu": gpu, "python_env": PYINFO}
 r = run_split(SUB, OUT, "/content/work/subset"); print(r.stderr[-1500:])
 assert r.returncode == 0, "run failed: see /content/out/subset/logs/replica-0.log"
 print(f"done in {(time.time()-T0)/60:.1f} min. Results: {OUT}")
@@ -132,7 +143,57 @@ print("saved to", dest, "\\nScore it on your own computer (no GPU needed): pytho
 
 
 add("code", '''
-# 8. Public test data (only if RUN_PUBLIC_TEST): from MyDrive/DataMate/data/public_test/ or MyDrive/DataMate/<PUBLIC_ZIP>
+# 8. Full training run (only if RUN_FULL_TRAINING): every training question, one fold of whole businesses at a time,
+#    through the evaluation harness. A fold with DONE on Drive is not run again (resume after a disconnect).
+if RUN_FULL_TRAINING:
+    TDEST = Path(DRIVE) / "runs" / TRAIN_RUN; TDEST.mkdir(parents=True, exist_ok=True)
+    TOUT = Path("/content/out") / TRAIN_RUN; TOUT.mkdir(parents=True, exist_ok=True)
+    tmeta = colab_helpers.run_meta(TDEST, **IDENTITY, folds=FOLDS, split="training")
+    tmeta.update(ABOUT); tmeta.setdefault("folds_done", {})
+    HARNESS = ["datamate.eval.harness", "run", "--config", "config/colab.json", "--data-dir", str(TRAIN),
+               "--answers", str(TRAIN / "answers.jsonl"), "--out", str(TOUT), "--folds", str(FOLDS), "--dev",
+               *run_sets(f"/content/work/{TRAIN_RUN}")]
+    for k in range(FOLDS):
+        saved, local = TDEST / f"fold{k}", TOUT / f"fold{k}"
+        if (saved / "DONE").is_file():
+            if not local.exists(): shutil.copytree(saved, local)
+            print(f"fold {k} already done"); continue
+        shutil.rmtree(local, ignore_errors=True); shutil.rmtree(f"/content/work/{TRAIN_RUN}", ignore_errors=True)
+        t = time.time(); r = run(HARNESS + ["--fold", str(k)])
+        print(f"fold {k}/{FOLDS}: exit {r.returncode} in {(time.time()-t)/60:.1f} min\\n", r.stdout[-1200:], r.stderr[-800:])
+        if local.exists(): shutil.rmtree(saved, ignore_errors=True); shutil.copytree(local, saved)
+        assert r.returncode == 0, f"fold {k} failed: see {saved}/logs/; Run all again to retry it"
+        tmeta["folds_done"][str(k)] = {"minutes": round((time.time() - t) / 60, 1), "finished": time.strftime("%Y-%m-%d %H:%M")}
+        colab_helpers.save_meta(TDEST, tmeta); (saved / "DONE").write_text("harness exit 0\\n")
+    r = run(HARNESS + ["--all-folds", "--resume"]); print(r.stdout[-3000:], r.stderr[-800:])
+    assert r.returncode == 0, "the merged evaluation failed"
+    shutil.copy(TOUT / "run_record.json", TDEST / "run_record.json"); colab_helpers.save_meta(TDEST, tmeta)
+else:
+    print("full training run skipped (RUN_FULL_TRAINING = False)")
+''')
+
+add("code", '''
+# 9. Training results: PA by type, error analysis (TASKS L-14) and runtime projection (TASKS M4-08), saved to Drive
+if RUN_FULL_TRAINING:
+    rep = json.loads((TOUT / "run_record.json").read_text())["report"]
+    print(f"PA {rep['pa']:.4f} on {rep['n']} questions: {rep['correct']} correct, {rep['wrong']} wrong, {rep['abstain']} abstain")
+    for t, c in sorted(rep["by_type"].items()): print(f"  {t:14s} {c}")
+    ea = subprocess.run([PY, "tools/error_analysis.py", *[x for k in range(FOLDS) for x in ("--run", str(TOUT / f"fold{k}"))],
+                         "--answers", str(TRAIN / "answers.jsonl"), "--markdown", str(TDEST / "error_analysis.md")],
+                        cwd="/content/DataMate", env=ENV, text=True, capture_output=True)
+    print(ea.stdout[:3000], ea.stderr[-500:])
+    proj = rep["projected_s"]
+    projection = {"gpu": gpu_name, "servers": 1, "model_loads": FOLDS, "questions": rep["n"],
+                  "hours_500": round(proj["500"] / 3600, 2), "hours_1000": round(proj["1000"] / 3600, 2),
+                  "note": "one Colab server, model loaded once per fold; two RTX 5090 servers are expected to be roughly "
+                          "twice as fast; indicative only until measured on 2 x RTX 5090"}
+    (TDEST / "projection.json").write_text(json.dumps(projection, indent=2))
+    print("projection (6 h limit, aim <= 3 h):", projection)
+    print("saved to", TDEST)
+''')
+
+add("code", '''
+# 10. Public test data (only if RUN_PUBLIC_TEST): from MyDrive/DataMate/data/public_test/ or MyDrive/DataMate/<PUBLIC_ZIP>
 if RUN_PUBLIC_TEST:
     PUB_ROOT = Path("/content/snap/public")
     if not PUB_ROOT.exists():
@@ -153,19 +214,13 @@ else:
 ''')
 
 add("code", '''
-# 9. Public test run, chunk by chunk. A chunk that already has DONE on Drive is not run again (resume after a disconnect).
+# 11. Public test run, chunk by chunk. A chunk that already has DONE on Drive is not run again (resume after a disconnect).
 #    The model server starts and stops inside each chunk. Each chunk keeps its own genuine logs and run.json;
 #    only submission.jsonl is merged, in the order of questions.jsonl.
 if RUN_PUBLIC_TEST:
     DEST = Path(DRIVE) / "runs" / PUBLIC_RUN; DEST.mkdir(parents=True, exist_ok=True)
-    commit = sh("cd /content/DataMate && git rev-parse HEAD").strip()
-    meta_path = DEST / "meta.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.is_file() else {"chunks": {}}
-    if meta.get("commit", commit) != commit or meta.get("model", MODEL_REPO) != MODEL_REPO:
-        raise SystemExit(f"{DEST} was started with commit {meta.get('commit')} / model {meta.get('model')}: "
-                         "use a new PUBLIC_RUN name instead of mixing code or model versions in one submission")
-    meta.update(commit=commit, branch=BRANCH, model=MODEL_REPO, config="config/colab.json", gpu=gpu, python_env=PYINFO,
-                gpu_memory_utilization=frac, businesses_per_chunk=BUSINESSES_PER_CHUNK, split="public test")
+    meta = colab_helpers.run_meta(DEST, **IDENTITY, businesses_per_chunk=BUSINESSES_PER_CHUNK, split="public test")
+    meta.update(ABOUT); meta.setdefault("chunks", {})
     for chunk in CHUNKS:
         done = DEST / chunk.name / "DONE"
         if done.is_file(): print(chunk.name, "already done"); continue
@@ -178,9 +233,9 @@ if RUN_PUBLIC_TEST:
         shutil.rmtree(DEST / chunk.name, ignore_errors=True); shutil.copytree(out, DEST / chunk.name)
         assert r.returncode == 0 and pre.returncode == 0, f"{chunk.name} failed: see {DEST / chunk.name}/logs/; Run all again to retry it"
         meta["chunks"][chunk.name] = {"minutes": round((time.time() - t) / 60, 1), "finished": time.strftime("%Y-%m-%d %H:%M")}
-        meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False)); done.write_text("precheck passed\\n")
+        colab_helpers.save_meta(DEST, meta); done.write_text("precheck passed\\n")
     n = colab_helpers.merge_chunk_submissions(PUB, [DEST / c.name for c in CHUNKS], DEST / "submission.jsonl")
-    meta["merged_questions"] = n; meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+    meta["merged_questions"] = n; colab_helpers.save_meta(DEST, meta)
     print(f"merged {n} answers -> {DEST / 'submission.jsonl'} (upload this file for the Round 1 leaderboard)")
 ''')
 
