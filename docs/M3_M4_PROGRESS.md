@@ -131,3 +131,8 @@ Done in one branch for Lead, M3 and M4 (the user asked for all three here). Comm
 - GPU: `notebooks/GPU_CHECK.ipynb` + `tools/gpu_check_report.py` collect and judge every remaining GPU acceptance check in one session ([runbook](runbooks/gpu-phase2.md)). **Not run yet.**
 - Not possible here: `requirements.lock` (the reference image does not fit the 16 GB free on this machine); E5 booking (L-03).
 
+## 2026-11-11 (3) — M4-11 fault injection and L-14 tooling (same branch)
+- `tests/fault/test_fault_injection.py`: 18 faults, each exit 0 + every id once + precheck clean. Two real gaps found and fixed (each test fails on the previous code): one corrupt extra workbook made a whole business abstain; SIGTERM during model loading wrote no submission.
+- `tools/error_analysis.py` (L-14) ready for the first real run.
+- `.venv/bin/ruff check src tests tools training_code` → clean; `.venv/bin/python -m pytest -q -o addopts=` → 587 passed, 2 skipped.
+

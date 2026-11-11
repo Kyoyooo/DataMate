@@ -30,6 +30,7 @@ One line per check: `PASS`, `FAIL` or `NOT RUN`, plus `INFO` values (PA, expecte
 
 ## 3. After the report
 - Copy `split_mini.recorded.jsonl` to `tests/fixtures/model_calls/split_mini.<model>.jsonl` and commit it: the fixture is synthetic, so this file contains no competition data. **Never commit** the training runs, the training recordings or `subset*/`: they contain training data, and the repository is public.
+- Error analysis of the first real run (L-14): `.venv/bin/python tools/error_analysis.py --run <folder>/runs/train-A1 --answers <folder>/answers.jsonl --markdown <folder>/errors.md`. Every class above 1 % gets an owner; the lead writes the tasks.
 - Update `docs/TASKS.md` with the report lines (command + result) for M3-02, M3-03, M3-04, M3-05, M3-13, M4-02, M4-03, M4-07, M4-19, L-20.
 - Lead decisions that follow: DEC-3 (model, revision, base image), template `v1` vs `v2`, `enable_thinking`, and the serving values in `config/run_config.json`.
 - Comparing several candidates: `notebooks/BAKEOFF_G4.ipynb` and `docs/runbooks/bakeoff.md` (held-out whole businesses, determinism experiments). Fold-based training runs: `python -m datamate.eval.harness run ...` (SPEC §7.14).
