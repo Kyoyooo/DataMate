@@ -123,3 +123,11 @@ The original `m3/M3-02-http-client` and `m1/M1-14-implementation-handoff` were n
 ### Notebooks are GPU-only (2026-11-11)
 `notebooks/colab_bootstrap.ipynb` and `notebooks/BAKEOFF_G4.ipynb` now do only GPU work (vLLM, data and model setup, the real runs) and save results to Drive. CPU work runs locally: tests, fixture check, scoring (`python -m datamate.eval.score`), parameter count (`tools/count_params.py`), and the bake-off analysis `tools/bakeoff_report.py` (PA, determinism, speed, licence/release checks). See `docs/runbooks/bakeoff.md`.
 
+## 2026-11-11 (2) — Phase 2 closed on CPU (branch `lead/phase-2-close`)
+Done in one branch for Lead, M3 and M4 (the user asked for all three here). Commands: `.venv/bin/ruff check src tests tools training_code` → clean; `.venv/bin/python -m pytest -q -o addopts=` → 568 passed, 2 skipped (transformers, pandas absent); fixture PA 1.0000 (13/13); production config exits 2 with no output.
+- Lead: `baseline_DataMate/` untracked and ignored (30 files were byte-identical training READMEs; no other tracked copy of training data found; history not rewritten). L-10 Done, L-12 harness (Review), CI lints tools/.
+- M4: survive one failed replica; global stop from process start; startup-budget and context-fit config checks; `requirements.in` ranges; replay 1-vs-8 workers byte-identical (M4-05 Done); exact thinking logs (M4-07 Done); vLLM pinned in every notebook.
+- M3: M3-07 Done (3 consecutive passes); the useful idea of the duplicate `origin/m3/M3-03` branch (requests must fit `max_model_len`) ported with credit, the rest is already on main differently, so that branch can be closed; per-run stage statistics; candidate table.
+- GPU: `notebooks/GPU_CHECK.ipynb` + `tools/gpu_check_report.py` collect and judge every remaining GPU acceptance check in one session ([runbook](runbooks/gpu-phase2.md)). **Not run yet.**
+- Not possible here: `requirements.lock` (the reference image does not fit the 16 GB free on this machine); E5 booking (L-03).
+

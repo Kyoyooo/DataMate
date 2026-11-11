@@ -8,10 +8,10 @@ Purpose: turn a real Colab/GPU run on a **training** subset into a replay file t
 3. Record:
    ```bash
    python tools/record_model_calls.py --config config/colab.json --data-dir /content/train \
-     --out tests/fixtures/model_calls/train_sample.jsonl --per-business 2 --max-questions 30
+     --out out/recordings/train_sample.jsonl --per-business 2 --max-questions 30
    ```
    The script refuses a split without `answers.jsonl`.
-4. Commit the JSONL. Create the replay config (copy `config/replay.json`, set `replay_path`, same sampling values).
+4. Keep that JSONL on Drive / local `out/` only: recordings of **training** questions contain training data (rulebook, README, schema, questions) and the repository is public. Commit only recordings of the synthetic fixture (`tests/fixtures/split_mini`), as `notebooks/GPU_CHECK.ipynb` makes them. Create the replay config (copy `config/replay.json`, set `replay_path`, same sampling values).
 5. Verify on CPU: `python -m datamate.run --dev --config <replay config> --data-dir <train subset> ...` reports no `E_REPLAY_MISS` in `run.json.counts.by_reason`.
 
 ## After any template, schema or decoding change
