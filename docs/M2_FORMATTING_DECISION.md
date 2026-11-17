@@ -14,7 +14,9 @@
 
 The historical baseline passes native values through small number/percent helpers and uses Python `round()` in several rules. Its final verifier distinguishes missing information from an uncertain answer and checks README/column hints. The present changes keep that distinction with typed values and auditable metadata. Historical rounding, fixed synonym lists, and subjective-question heuristics stay outside the implementation. The historical public run and synthetic CPU fixture measure different inputs.
 
-Lead can run `python -m pytest tests/golden tests/unit/test_scorer.py` for L-10. The shared serializer and scorer changes are ready for Lead review. L-10's other reporting and real-data checks remain with Lead.
+### M2-06 verification on main
+
+On `e0d5ecf`, `python -m pytest -o addopts= -q tests/golden tests/unit/test_scorer.py` passed all 71 tests using Windows Python 3.14.0 and `requirements-cpu.lock`. This includes all 23 shared cases, the independently rejected predictions and the DuckDB decimal pipeline case. L-10 is marked Done in the backlog. M2-06 is ready for the Lead to close using this evidence. The documented V3 half-up default still applies to exact ties for percentages and non-money averages.
 
 ## M2-07 decision rule matrix
 
