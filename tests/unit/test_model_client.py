@@ -314,6 +314,37 @@ def test_http_pipeline_executes_real_sql_and_logs_reasoning(http_server, split, 
         "$defs"]["TimeRef"]["properties"]["expr"]
 
 
+def test_h6_http_parser_passes_resolved_comparison_windows_to_solver(http_server, split, catalog, cfg):
+    text = "Từ 1/3 đến 4/3 có nhiều đơn hơn cùng kỳ tháng trước không?"
+    frame = {"expected_type": "boolean", "time": [
+        {"span": "Từ 1/3 đến 4/3", "expr": {"kind": "yearless_date_range",
+         "start": {"month": 3, "day": 1}, "end": {"month": 3, "day": 4}}},
+        {"span": "cùng kỳ tháng trước", "role": "comparison",
+         "expr": {"kind": "same_days_previous_month", "ref": 0}},
+    ]}
+    http_server["actions"] = [
+        {"payload": response(json.dumps(frame))},
+        {"payload": response(json.dumps({"sql": "SELECT TRUE AS value"}))},
+    ]
+    record, log = answer_question(question(text), split, catalog, client_for(http_server), cfg)
+
+    assert record.type == "boolean" and record.answer is True
+    assert [(c.stage, c.backend) for c in log.calls] == [("parse", "http"), ("solve", "http")]
+    assert log.calls[0].template_id == "parse.frame.v3"
+    parse_body, solve_body = (request[2] for request in http_server["requests"])
+    structured = parse_body["response_format"]["json_schema"]
+    assert structured["name"] == "parse_frame_v3"
+    defs = structured["schema"]["$defs"]
+    branches = defs["TimeRef"]["properties"]["expr"]["anyOf"]
+    for kind in ("YearlessDateRangeExpr", "SameDaysPreviousMonthExpr", "SamePeriodPriorYearExpr"):
+        assert {"$ref": f"#/$defs/{kind}"} in branches
+        assert "kind" in defs[kind]["required"]
+    assert set(defs["RollingExpr"]["properties"]["unit"]["enum"]) == {"day", "week", "month"}
+    solve_prompt = solve_body["messages"][-1]["content"]
+    assert "- [0] primary: 2026-03-01 .. 2026-03-04" in solve_prompt
+    assert "- [1] comparison: 2026-02-01 .. 2026-02-04" in solve_prompt
+
+
 def test_http_parser_still_uses_original_pydantic_validation(http_server, split, catalog, cfg):
     http_server["actions"] = [{"payload": response('{"expected_type":"number"}')}]
     frame, result, error = parse_question(question("Bao nhiêu?"), split, catalog,
