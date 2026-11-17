@@ -43,7 +43,15 @@ The CPU implementation uses reordered tokens or a near-complete single-token spe
 
 `logs/questions.jsonl` keeps the existing decision kind and reason code. Its feature map adds per-window coverage and comparison references, model claims, evidence status/source and qualified candidate column names, SQL execution state and error code, row count and NULL presence. The percent scale signal is diagnostic only. The feature map does not include raw README excerpts or data rows. Submission shape and reason codes are unchanged.
 
-M1-10 still needs to deliver fact-table coverage, authoritative labels and any approved semantic hints or aliases. The frozen `ColumnInfo` currently has no dedicated alias or semantic-hint field. Integrate those through the approved catalog API when available. L-14 should compare false unanswerables, false answers, abstains and coverage/match errors using the features above. The authorized training answers and L-14 run evidence were unavailable locally. The acceptance check on answerable neighbours of the 70 training unanswerables remains pending. M2-14 can add regressions to the existing matrix once those cases are identified.
+### M1-10 integration verification
+
+M1-10 is Done on `e0d5ecf`. The runtime catalog preserves original and SQL column names, README text, warnings and activity date bounds. The richer ingestion catalog has semantic hints in its audit sidecar. The runtime projection does not expose them in the frozen `ColumnInfo` contract, so the gate continues to use the evidence available through that contract.
+
+`tests/integration/test_catalog_decision.py` ingests synthetic CSV and README files through `setup_business` and exercises the actual runtime gate with scripted model responses. The six cases verify original column labels, a README alias mapped to a physical column, an ambiguous alias, a confirmed missing field, and full primary coverage with either zero or partial comparison coverage. Expiry dates in the CSV lie beyond the last activity date. The coverage cases verify the bounds reaching the gate and that SQL is skipped for zero comparison coverage.
+
+With an authorized train snapshot, run `python tools/audit_m1.py --split-dir <train-split> --output-dir <local-output> --role train` on CPU. Spot-check the stored activity bounds against source dates and README references. Select cases for known physical aliases, ambiguous mappings and differing coverage across periods. Use the same runtime catalog path as in the test when constructing scripted checks from independently confirmed facts. Record aggregate findings and keep the raw catalog and question records local.
+
+L-14 should compare false unanswerables, false answers, abstains and coverage/match errors using the gate features above. The local run used synthetic data. The acceptance check on answerable neighbours of the 70 training unanswerables remains pending real train predictions and labels. M2-14 can add regressions to the existing matrix once those cases are identified.
 
 ## Local verification
 
